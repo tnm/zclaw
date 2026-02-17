@@ -4,7 +4,7 @@ The smallest possible AI personal assistant running on an ESP32.
 
 Talk to your agent via Telegram for ~$5 in hardware. 
 
-Create scheduled tasks, custom tools, ask questions, attach sensors and cameras.
+Create scheduled tasks & custom tools, ask questions, use sensors and cameras.
 
 ```
 You: "Remind me to water the plants every morning at 8am"
@@ -27,7 +27,6 @@ Agent: Done. GPIO2 is now off.
 - **Any LLM backend** — Anthropic, OpenAI, or open source models via OpenRouter
 - **$5 hardware** — Just an ESP32 dev board and WiFi
 - **~900 KB binary** — Fits in dual OTA partitions with 37% free
-- **Rate limiting** — Configurable hourly/daily limits to control API costs
 
 ### Coming Soon
 
@@ -46,7 +45,7 @@ Good choice: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/Seeed-XIAO-ESP32C
 
 Other options: ESP32-DevKitM, Adafruit QT Py, any generic ESP32 module.
 
-**ESP32-S3** (with *Sense* for camera/voice)
+**ESP32-S3** (with *Sense* for built-in camera/voice)
 - Dual-core 240MHz, 512KB+ SRAM, 8MB+ flash
 - OV2640 camera, I2S microphone support
 - Cost: ~$8-15 USD

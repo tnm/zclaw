@@ -63,24 +63,38 @@ static void load_entries(void)
 }
 
 // Save a single entry to NVS
-static void save_entry(int index)
+static esp_err_t save_entry(int index)
 {
     nvs_handle_t handle;
-    if (nvs_open(NVS_NAMESPACE_CRON, NVS_READWRITE, &handle) != ESP_OK) {
-        return;
+    esp_err_t err = nvs_open(NVS_NAMESPACE_CRON, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to open cron NVS: %s", esp_err_to_name(err));
+        return err;
     }
 
     char key[16];
     snprintf(key, sizeof(key), "cron_%d", index);
 
     if (s_entries[index].id == 0) {
-        nvs_erase_key(handle, key);
+        err = nvs_erase_key(handle, key);
+        if (err == ESP_ERR_NVS_NOT_FOUND) {
+            err = ESP_OK;
+        }
     } else {
-        nvs_set_blob(handle, key, &s_entries[index], sizeof(cron_entry_t));
+        err = nvs_set_blob(handle, key, &s_entries[index], sizeof(cron_entry_t));
     }
 
-    nvs_commit(handle);
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+
     nvs_close(handle);
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to persist cron entry slot %d: %s", index, esp_err_to_name(err));
+    }
+
+    return err;
 }
 
 esp_err_t cron_init(void)
@@ -181,7 +195,10 @@ uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, co
     strncpy(entry->action, action, CRON_MAX_ACTION_LEN - 1);
     entry->action[CRON_MAX_ACTION_LEN - 1] = '\0';
 
-    save_entry(slot);
+    if (save_entry(slot) != ESP_OK) {
+        memset(entry, 0, sizeof(*entry));
+        return 0;
+    }
 
     ESP_LOGI(TAG, "Created cron entry %d: type=%d action=%s", entry->id, type, action);
     return entry->id;
@@ -243,8 +260,12 @@ bool cron_delete(uint8_t id)
 {
     for (int i = 0; i < CRON_MAX_ENTRIES; i++) {
         if (s_entries[i].id == id) {
+            cron_entry_t previous_entry = s_entries[i];
             s_entries[i].id = 0;
-            save_entry(i);
+            if (save_entry(i) != ESP_OK) {
+                s_entries[i] = previous_entry;
+                return false;
+            }
             ESP_LOGI(TAG, "Deleted cron entry %d", id);
             return true;
         }
@@ -284,7 +305,9 @@ static void check_entries(void)
 
         if (should_fire) {
             entry->last_run = now;
-            save_entry(i);
+            if (save_entry(i) != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to persist run timestamp for cron %d", entry->id);
+            }
 
             ESP_LOGI(TAG, "Firing cron %d: %s", entry->id, entry->action);
 

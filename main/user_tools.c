@@ -1,4 +1,5 @@
 #include "user_tools.h"
+#include "tools.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -13,6 +14,27 @@ static int s_tool_count = 0;
 
 // NVS key format: "ut_<index>" for tool data
 // "ut_count" for total count
+
+static bool name_conflicts_with_builtin_tool(const char *name)
+{
+    if (!name) {
+        return false;
+    }
+
+    int builtin_count = 0;
+    const tool_def_t *builtin_tools = tools_get_all(&builtin_count);
+    if (!builtin_tools || builtin_count <= 0) {
+        return false;
+    }
+
+    for (int i = 0; i < builtin_count; i++) {
+        if (strcmp(builtin_tools[i].name, name) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
 
 static esp_err_t save_to_nvs(void)
 {
@@ -113,6 +135,11 @@ bool user_tools_create(const char *name, const char *description, const char *ac
 
     if (strlen(name) == 0 || strlen(name) >= TOOL_NAME_MAX_LEN) {
         ESP_LOGW(TAG, "Invalid tool name length");
+        return false;
+    }
+
+    if (name_conflicts_with_builtin_tool(name)) {
+        ESP_LOGW(TAG, "Tool '%s' conflicts with built-in tool name", name);
         return false;
     }
 

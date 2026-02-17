@@ -153,10 +153,19 @@ void channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
     s_input_queue = input_queue;
     s_output_queue = output_queue;
 
-    xTaskCreate(channel_read_task, "ch_read", CHANNEL_TASK_STACK_SIZE, NULL,
-                CHANNEL_TASK_PRIORITY, NULL);
-    xTaskCreate(channel_write_task, "ch_write", CHANNEL_TASK_STACK_SIZE, NULL,
-                CHANNEL_TASK_PRIORITY, NULL);
+    TaskHandle_t read_task = NULL;
+    if (xTaskCreate(channel_read_task, "ch_read", CHANNEL_TASK_STACK_SIZE, NULL,
+                    CHANNEL_TASK_PRIORITY, &read_task) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create channel read task");
+        return;
+    }
+
+    if (xTaskCreate(channel_write_task, "ch_write", CHANNEL_TASK_STACK_SIZE, NULL,
+                    CHANNEL_TASK_PRIORITY, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create channel write task");
+        vTaskDelete(read_task);
+        return;
+    }
 
     ESP_LOGI(TAG, "Channel tasks started");
 }

@@ -267,8 +267,11 @@ void agent_start(QueueHandle_t input_queue,
     s_channel_output_queue = channel_output_queue;
     s_telegram_output_queue = telegram_output_queue;
 
-    xTaskCreate(agent_task, "agent", AGENT_TASK_STACK_SIZE, NULL,
-                AGENT_TASK_PRIORITY, NULL);
+    if (xTaskCreate(agent_task, "agent", AGENT_TASK_STACK_SIZE, NULL,
+                    AGENT_TASK_PRIORITY, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create agent task");
+        return;
+    }
 
     ESP_LOGI(TAG, "Agent started");
 }

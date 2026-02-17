@@ -271,6 +271,7 @@ static esp_err_t captive_portal_handler(httpd_req_t *req)
 
 static esp_err_t start_server(void)
 {
+    esp_err_t err;
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.uri_match_fn = httpd_uri_match_wildcard;
     config.max_uri_handlers = 10;
@@ -286,21 +287,39 @@ static esp_err_t start_server(void)
         .method = HTTP_GET,
         .handler = root_get_handler,
     };
-    httpd_register_uri_handler(s_server, &root);
+    err = httpd_register_uri_handler(s_server, &root);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register '/' handler: %s", esp_err_to_name(err));
+        httpd_stop(s_server);
+        s_server = NULL;
+        return err;
+    }
 
     httpd_uri_t save = {
         .uri = "/save",
         .method = HTTP_POST,
         .handler = save_post_handler,
     };
-    httpd_register_uri_handler(s_server, &save);
+    err = httpd_register_uri_handler(s_server, &save);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register '/save' handler: %s", esp_err_to_name(err));
+        httpd_stop(s_server);
+        s_server = NULL;
+        return err;
+    }
 
     httpd_uri_t networks = {
         .uri = "/networks",
         .method = HTTP_GET,
         .handler = networks_get_handler,
     };
-    httpd_register_uri_handler(s_server, &networks);
+    err = httpd_register_uri_handler(s_server, &networks);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register '/networks' handler: %s", esp_err_to_name(err));
+        httpd_stop(s_server);
+        s_server = NULL;
+        return err;
+    }
 
     // Wildcard for captive portal
     httpd_uri_t wildcard = {
@@ -308,7 +327,13 @@ static esp_err_t start_server(void)
         .method = HTTP_GET,
         .handler = captive_portal_handler,
     };
-    httpd_register_uri_handler(s_server, &wildcard);
+    err = httpd_register_uri_handler(s_server, &wildcard);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register wildcard handler: %s", esp_err_to_name(err));
+        httpd_stop(s_server);
+        s_server = NULL;
+        return err;
+    }
 
     ESP_LOGI(TAG, "HTTP server started");
     return ESP_OK;

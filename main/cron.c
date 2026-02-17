@@ -189,7 +189,15 @@ uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, co
 
 void cron_list(char *buf, size_t buf_len)
 {
+    if (!buf || buf_len == 0) {
+        return;
+    }
+
     cJSON *arr = cJSON_CreateArray();
+    if (!arr) {
+        snprintf(buf, buf_len, "[]");
+        return;
+    }
 
     for (int i = 0; i < CRON_MAX_ENTRIES; i++) {
         if (s_entries[i].id == 0) continue;
@@ -225,7 +233,7 @@ void cron_list(char *buf, size_t buf_len)
         buf[buf_len - 1] = '\0';
         free(json);
     } else {
-        strncpy(buf, "[]", buf_len);
+        snprintf(buf, buf_len, "[]");
     }
 
     cJSON_Delete(arr);
@@ -294,7 +302,7 @@ static void check_entries(void)
 // Cron task
 static void cron_task(void *arg)
 {
-    ESP_LOGI(TAG, "Cron task started");
+    (void)arg;
 
     while (1) {
         check_entries();
@@ -306,8 +314,11 @@ void cron_start(QueueHandle_t agent_input_queue)
 {
     s_agent_queue = agent_input_queue;
 
-    xTaskCreate(cron_task, "cron", CRON_TASK_STACK_SIZE, NULL,
-                CRON_TASK_PRIORITY, NULL);
+    if (xTaskCreate(cron_task, "cron", CRON_TASK_STACK_SIZE, NULL,
+                    CRON_TASK_PRIORITY, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create cron task");
+        return;
+    }
 
     ESP_LOGI(TAG, "Cron task started");
 }

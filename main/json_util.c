@@ -27,37 +27,69 @@ static char *build_anthropic_request(
     int tool_count)
 {
     cJSON *root = cJSON_CreateObject();
-    if (!root) return NULL;
+    if (!root) {
+        return NULL;
+    }
 
-    cJSON_AddStringToObject(root, "model", llm_get_model());
-    cJSON_AddNumberToObject(root, "max_tokens", LLM_MAX_TOKENS);
-    cJSON_AddStringToObject(root, "system", system_prompt);
+    if (!cJSON_AddStringToObject(root, "model", llm_get_model()) ||
+        !cJSON_AddNumberToObject(root, "max_tokens", LLM_MAX_TOKENS) ||
+        !cJSON_AddStringToObject(root, "system", system_prompt)) {
+        goto fail;
+    }
 
     cJSON *messages = cJSON_AddArrayToObject(root, "messages");
+    if (!messages) {
+        goto fail;
+    }
 
     // Add history
     for (int i = 0; i < history_len; i++) {
         cJSON *msg = cJSON_CreateObject();
-        cJSON_AddStringToObject(msg, "role", history[i].role);
+        if (!msg || !cJSON_AddStringToObject(msg, "role", history[i].role)) {
+            cJSON_Delete(msg);
+            goto fail;
+        }
 
         if (history[i].is_tool_use) {
             cJSON *content = cJSON_AddArrayToObject(msg, "content");
             cJSON *tool_use = cJSON_CreateObject();
-            cJSON_AddStringToObject(tool_use, "type", "tool_use");
-            cJSON_AddStringToObject(tool_use, "id", history[i].tool_id);
-            cJSON_AddStringToObject(tool_use, "name", history[i].tool_name);
+            if (!content || !tool_use ||
+                !cJSON_AddStringToObject(tool_use, "type", "tool_use") ||
+                !cJSON_AddStringToObject(tool_use, "id", history[i].tool_id) ||
+                !cJSON_AddStringToObject(tool_use, "name", history[i].tool_name)) {
+                cJSON_Delete(tool_use);
+                cJSON_Delete(msg);
+                goto fail;
+            }
+
             cJSON *input = cJSON_Parse(history[i].content);
-            cJSON_AddItemToObject(tool_use, "input", input ? input : cJSON_CreateObject());
+            if (!input) {
+                input = cJSON_CreateObject();
+            }
+            if (!input) {
+                cJSON_Delete(tool_use);
+                cJSON_Delete(msg);
+                goto fail;
+            }
+
+            cJSON_AddItemToObject(tool_use, "input", input);
             cJSON_AddItemToArray(content, tool_use);
         } else if (history[i].is_tool_result) {
             cJSON *content = cJSON_AddArrayToObject(msg, "content");
             cJSON *tool_result = cJSON_CreateObject();
-            cJSON_AddStringToObject(tool_result, "type", "tool_result");
-            cJSON_AddStringToObject(tool_result, "tool_use_id", history[i].tool_id);
-            cJSON_AddStringToObject(tool_result, "content", history[i].content);
+            if (!content || !tool_result ||
+                !cJSON_AddStringToObject(tool_result, "type", "tool_result") ||
+                !cJSON_AddStringToObject(tool_result, "tool_use_id", history[i].tool_id) ||
+                !cJSON_AddStringToObject(tool_result, "content", history[i].content)) {
+                cJSON_Delete(tool_result);
+                cJSON_Delete(msg);
+                goto fail;
+            }
+
             cJSON_AddItemToArray(content, tool_result);
-        } else {
-            cJSON_AddStringToObject(msg, "content", history[i].content);
+        } else if (!cJSON_AddStringToObject(msg, "content", history[i].content)) {
+            cJSON_Delete(msg);
+            goto fail;
         }
 
         cJSON_AddItemToArray(messages, msg);
@@ -66,8 +98,13 @@ static char *build_anthropic_request(
     // Add new user message
     if (user_message && user_message[0] != '\0') {
         cJSON *user_msg = cJSON_CreateObject();
-        cJSON_AddStringToObject(user_msg, "role", "user");
-        cJSON_AddStringToObject(user_msg, "content", user_message);
+        if (!user_msg ||
+            !cJSON_AddStringToObject(user_msg, "role", "user") ||
+            !cJSON_AddStringToObject(user_msg, "content", user_message)) {
+            cJSON_Delete(user_msg);
+            goto fail;
+        }
+
         cJSON_AddItemToArray(messages, user_msg);
     }
 
@@ -75,14 +112,30 @@ static char *build_anthropic_request(
     int user_tool_count = user_tools_count();
     if (tool_count > 0 || user_tool_count > 0) {
         cJSON *tools_arr = cJSON_AddArrayToObject(root, "tools");
+        if (!tools_arr) {
+            goto fail;
+        }
 
         // Built-in tools
         for (int i = 0; i < tool_count; i++) {
             cJSON *tool = cJSON_CreateObject();
-            cJSON_AddStringToObject(tool, "name", tools[i].name);
-            cJSON_AddStringToObject(tool, "description", tools[i].description);
+            if (!tool ||
+                !cJSON_AddStringToObject(tool, "name", tools[i].name) ||
+                !cJSON_AddStringToObject(tool, "description", tools[i].description)) {
+                cJSON_Delete(tool);
+                goto fail;
+            }
+
             cJSON *schema = cJSON_Parse(tools[i].input_schema_json);
-            if (schema) cJSON_AddItemToObject(tool, "input_schema", schema);
+            if (!schema) {
+                schema = cJSON_CreateObject();
+            }
+            if (!schema) {
+                cJSON_Delete(tool);
+                goto fail;
+            }
+            cJSON_AddItemToObject(tool, "input_schema", schema);
+
             cJSON_AddItemToArray(tools_arr, tool);
         }
 
@@ -91,20 +144,35 @@ static char *build_anthropic_request(
         int loaded = user_tools_get_all(user_tools_arr, MAX_DYNAMIC_TOOLS);
         for (int i = 0; i < loaded; i++) {
             cJSON *tool = cJSON_CreateObject();
-            cJSON_AddStringToObject(tool, "name", user_tools_arr[i].name);
-            cJSON_AddStringToObject(tool, "description", user_tools_arr[i].description);
-            // User tools take no input - just call them
             cJSON *schema = cJSON_CreateObject();
-            cJSON_AddStringToObject(schema, "type", "object");
-            cJSON_AddItemToObject(schema, "properties", cJSON_CreateObject());
+            cJSON *properties = cJSON_CreateObject();
+            if (!tool || !schema || !properties ||
+                !cJSON_AddStringToObject(tool, "name", user_tools_arr[i].name) ||
+                !cJSON_AddStringToObject(tool, "description", user_tools_arr[i].description) ||
+                !cJSON_AddStringToObject(schema, "type", "object")) {
+                cJSON_Delete(properties);
+                cJSON_Delete(schema);
+                cJSON_Delete(tool);
+                goto fail;
+            }
+
+            cJSON_AddItemToObject(schema, "properties", properties);
             cJSON_AddItemToObject(tool, "input_schema", schema);
             cJSON_AddItemToArray(tools_arr, tool);
         }
     }
 
     char *json_str = cJSON_PrintUnformatted(root);
+    if (!json_str) {
+        goto fail;
+    }
+
     cJSON_Delete(root);
     return json_str;
+
+fail:
+    cJSON_Delete(root);
+    return NULL;
 }
 
 static bool parse_anthropic_response(
@@ -169,48 +237,80 @@ static char *build_openai_request(
     int tool_count)
 {
     cJSON *root = cJSON_CreateObject();
-    if (!root) return NULL;
+    if (!root) {
+        return NULL;
+    }
 
-    cJSON_AddStringToObject(root, "model", llm_get_model());
-    cJSON_AddNumberToObject(root, "max_tokens", LLM_MAX_TOKENS);
+    if (!cJSON_AddStringToObject(root, "model", llm_get_model()) ||
+        !cJSON_AddNumberToObject(root, "max_tokens", LLM_MAX_TOKENS)) {
+        goto fail;
+    }
 
     cJSON *messages = cJSON_AddArrayToObject(root, "messages");
+    if (!messages) {
+        goto fail;
+    }
 
     // System message first
     cJSON *sys_msg = cJSON_CreateObject();
-    cJSON_AddStringToObject(sys_msg, "role", "system");
-    cJSON_AddStringToObject(sys_msg, "content", system_prompt);
+    if (!sys_msg ||
+        !cJSON_AddStringToObject(sys_msg, "role", "system") ||
+        !cJSON_AddStringToObject(sys_msg, "content", system_prompt)) {
+        cJSON_Delete(sys_msg);
+        goto fail;
+    }
     cJSON_AddItemToArray(messages, sys_msg);
 
     // Add history
     for (int i = 0; i < history_len; i++) {
         cJSON *msg = cJSON_CreateObject();
+        if (!msg) {
+            goto fail;
+        }
 
         if (history[i].is_tool_use) {
             // Assistant message with tool_calls
-            cJSON_AddStringToObject(msg, "role", "assistant");
-            cJSON_AddNullToObject(msg, "content");
+            cJSON *tool_calls = NULL;
+            cJSON *tc = NULL;
+            cJSON *func = NULL;
 
-            cJSON *tool_calls = cJSON_AddArrayToObject(msg, "tool_calls");
-            cJSON *tc = cJSON_CreateObject();
-            cJSON_AddStringToObject(tc, "id", history[i].tool_id);
-            cJSON_AddStringToObject(tc, "type", "function");
+            if (!cJSON_AddStringToObject(msg, "role", "assistant") ||
+                !cJSON_AddNullToObject(msg, "content")) {
+                cJSON_Delete(msg);
+                goto fail;
+            }
 
-            cJSON *func = cJSON_CreateObject();
-            cJSON_AddStringToObject(func, "name", history[i].tool_name);
-            cJSON_AddStringToObject(func, "arguments", history[i].content);
+            tool_calls = cJSON_AddArrayToObject(msg, "tool_calls");
+            tc = cJSON_CreateObject();
+            func = cJSON_CreateObject();
+            if (!tool_calls || !tc || !func ||
+                !cJSON_AddStringToObject(tc, "id", history[i].tool_id) ||
+                !cJSON_AddStringToObject(tc, "type", "function") ||
+                !cJSON_AddStringToObject(func, "name", history[i].tool_name) ||
+                !cJSON_AddStringToObject(func, "arguments", history[i].content)) {
+                cJSON_Delete(func);
+                cJSON_Delete(tc);
+                cJSON_Delete(msg);
+                goto fail;
+            }
+
             cJSON_AddItemToObject(tc, "function", func);
-
             cJSON_AddItemToArray(tool_calls, tc);
         } else if (history[i].is_tool_result) {
             // Tool response message
-            cJSON_AddStringToObject(msg, "role", "tool");
-            cJSON_AddStringToObject(msg, "tool_call_id", history[i].tool_id);
-            cJSON_AddStringToObject(msg, "content", history[i].content);
+            if (!cJSON_AddStringToObject(msg, "role", "tool") ||
+                !cJSON_AddStringToObject(msg, "tool_call_id", history[i].tool_id) ||
+                !cJSON_AddStringToObject(msg, "content", history[i].content)) {
+                cJSON_Delete(msg);
+                goto fail;
+            }
         } else {
             // Regular message
-            cJSON_AddStringToObject(msg, "role", history[i].role);
-            cJSON_AddStringToObject(msg, "content", history[i].content);
+            if (!cJSON_AddStringToObject(msg, "role", history[i].role) ||
+                !cJSON_AddStringToObject(msg, "content", history[i].content)) {
+                cJSON_Delete(msg);
+                goto fail;
+            }
         }
 
         cJSON_AddItemToArray(messages, msg);
@@ -219,8 +319,12 @@ static char *build_openai_request(
     // Add new user message
     if (user_message && user_message[0] != '\0') {
         cJSON *user_msg = cJSON_CreateObject();
-        cJSON_AddStringToObject(user_msg, "role", "user");
-        cJSON_AddStringToObject(user_msg, "content", user_message);
+        if (!user_msg ||
+            !cJSON_AddStringToObject(user_msg, "role", "user") ||
+            !cJSON_AddStringToObject(user_msg, "content", user_message)) {
+            cJSON_Delete(user_msg);
+            goto fail;
+        }
         cJSON_AddItemToArray(messages, user_msg);
     }
 
@@ -228,18 +332,30 @@ static char *build_openai_request(
     int user_tool_count = user_tools_count();
     if (tool_count > 0 || user_tool_count > 0) {
         cJSON *tools_arr = cJSON_AddArrayToObject(root, "tools");
+        if (!tools_arr) {
+            goto fail;
+        }
 
         // Built-in tools
         for (int i = 0; i < tool_count; i++) {
             cJSON *tool = cJSON_CreateObject();
-            cJSON_AddStringToObject(tool, "type", "function");
-
             cJSON *func = cJSON_CreateObject();
-            cJSON_AddStringToObject(func, "name", tools[i].name);
-            cJSON_AddStringToObject(func, "description", tools[i].description);
             cJSON *params = cJSON_Parse(tools[i].input_schema_json);
-            if (params) cJSON_AddItemToObject(func, "parameters", params);
+            if (!params) {
+                params = cJSON_CreateObject();
+            }
 
+            if (!tool || !func || !params ||
+                !cJSON_AddStringToObject(tool, "type", "function") ||
+                !cJSON_AddStringToObject(func, "name", tools[i].name) ||
+                !cJSON_AddStringToObject(func, "description", tools[i].description)) {
+                cJSON_Delete(params);
+                cJSON_Delete(func);
+                cJSON_Delete(tool);
+                goto fail;
+            }
+
+            cJSON_AddItemToObject(func, "parameters", params);
             cJSON_AddItemToObject(tool, "function", func);
             cJSON_AddItemToArray(tools_arr, tool);
         }
@@ -249,25 +365,39 @@ static char *build_openai_request(
         int loaded = user_tools_get_all(user_tools_arr, MAX_DYNAMIC_TOOLS);
         for (int i = 0; i < loaded; i++) {
             cJSON *tool = cJSON_CreateObject();
-            cJSON_AddStringToObject(tool, "type", "function");
-
             cJSON *func = cJSON_CreateObject();
-            cJSON_AddStringToObject(func, "name", user_tools_arr[i].name);
-            cJSON_AddStringToObject(func, "description", user_tools_arr[i].description);
-            // User tools take no input
             cJSON *params = cJSON_CreateObject();
-            cJSON_AddStringToObject(params, "type", "object");
-            cJSON_AddItemToObject(params, "properties", cJSON_CreateObject());
-            cJSON_AddItemToObject(func, "parameters", params);
+            cJSON *properties = cJSON_CreateObject();
+            if (!tool || !func || !params || !properties ||
+                !cJSON_AddStringToObject(tool, "type", "function") ||
+                !cJSON_AddStringToObject(func, "name", user_tools_arr[i].name) ||
+                !cJSON_AddStringToObject(func, "description", user_tools_arr[i].description) ||
+                !cJSON_AddStringToObject(params, "type", "object")) {
+                cJSON_Delete(properties);
+                cJSON_Delete(params);
+                cJSON_Delete(func);
+                cJSON_Delete(tool);
+                goto fail;
+            }
 
+            cJSON_AddItemToObject(params, "properties", properties);
+            cJSON_AddItemToObject(func, "parameters", params);
             cJSON_AddItemToObject(tool, "function", func);
             cJSON_AddItemToArray(tools_arr, tool);
         }
     }
 
     char *json_str = cJSON_PrintUnformatted(root);
+    if (!json_str) {
+        goto fail;
+    }
+
     cJSON_Delete(root);
     return json_str;
+
+fail:
+    cJSON_Delete(root);
+    return NULL;
 }
 
 static bool parse_openai_response(

@@ -278,31 +278,33 @@ void app_main(void)
     }
 
     // 6. Start task to clear boot counter after stable period
-    xTaskCreate(clear_boot_count, "boot_ok", 2048, NULL, 1, NULL);
+    if (xTaskCreate(clear_boot_count, "boot_ok", 2048, NULL, 1, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create boot confirmation task");
+    }
 
     // 7. Initialize cron (includes NTP sync)
     ESP_ERROR_CHECK(cron_init());
 
-    // 6. Initialize LLM client
+    // 8. Initialize LLM client
     ESP_ERROR_CHECK(llm_init());
 
-    // 7. Initialize rate limiter
+    // 9. Initialize rate limiter
     ratelimit_init();
 
-    // 8. Initialize Telegram
+    // 10. Initialize Telegram
 #if CONFIG_ZCLAW_STUB_TELEGRAM
     ESP_LOGW(TAG, "Telegram stub mode enabled; skipping Telegram startup");
 #else
     telegram_init();  // May fail if not configured, that's OK
 #endif
 
-    // 9. Register tools
+    // 11. Register tools
     tools_init();
 
-    // 10. Initialize USB serial channel
+    // 12. Initialize USB serial channel
     channel_init();
 
-    // 11. Create queues
+    // 13. Create queues
     QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
     QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
     QueueHandle_t telegram_output_queue = NULL;
@@ -320,21 +322,21 @@ void app_main(void)
         esp_restart();
     }
 
-    // 12. Start channel task (USB serial)
+    // 14. Start channel task (USB serial)
     channel_start(input_queue, channel_output_queue);
 
-    // 13. Start Telegram channel
+    // 15. Start Telegram channel
     if (telegram_enabled) {
         telegram_start(input_queue, telegram_output_queue);
     }
 
-    // 14. Start agent task
+    // 16. Start agent task
     agent_start(input_queue, channel_output_queue, telegram_output_queue);
 
-    // 15. Start cron task
+    // 17. Start cron task
     cron_start(input_queue);
 
-    // 16. Start web config server (for reconfiguration)
+    // 18. Start web config server (for reconfiguration)
 #if WEBSETUP_ENABLE_STA_SERVER
     websetup_start_sta_mode();
 #else
@@ -348,7 +350,7 @@ void app_main(void)
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
 
-    // 17. Send startup notification on Telegram
+    // 19. Send startup notification on Telegram
     if (telegram_enabled && telegram_is_configured()) {
         telegram_send_startup();
     }

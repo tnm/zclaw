@@ -82,6 +82,7 @@ esp_err_t llm_init(void)
     if (!memory_get(NVS_KEY_LLM_MODEL, s_model, sizeof(s_model))) {
         // Use default for backend
         strncpy(s_model, llm_get_default_model(), sizeof(s_model) - 1);
+        s_model[sizeof(s_model) - 1] = '\0';
     }
 
     const char *backend_names[] = {"Anthropic", "OpenAI", "OpenRouter"};

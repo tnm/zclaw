@@ -105,8 +105,14 @@ esp_err_t telegram_send(const char *text)
 
     // Build JSON body
     cJSON *root = cJSON_CreateObject();
-    cJSON_AddNumberToObject(root, "chat_id", (double)s_chat_id);
-    cJSON_AddStringToObject(root, "text", text);
+    if (!root) {
+        return ESP_ERR_NO_MEM;
+    }
+    if (!cJSON_AddNumberToObject(root, "chat_id", (double)s_chat_id) ||
+        !cJSON_AddStringToObject(root, "text", text)) {
+        cJSON_Delete(root);
+        return ESP_ERR_NO_MEM;
+    }
     char *body = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
 
@@ -351,10 +357,19 @@ void telegram_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
     s_input_queue = input_queue;
     s_output_queue = output_queue;
 
-    xTaskCreate(telegram_poll_task, "tg_poll", CHANNEL_TASK_STACK_SIZE, NULL,
-                CHANNEL_TASK_PRIORITY, NULL);
-    xTaskCreate(telegram_send_task, "tg_send", CHANNEL_TASK_STACK_SIZE, NULL,
-                CHANNEL_TASK_PRIORITY, NULL);
+    TaskHandle_t poll_task = NULL;
+    if (xTaskCreate(telegram_poll_task, "tg_poll", CHANNEL_TASK_STACK_SIZE, NULL,
+                    CHANNEL_TASK_PRIORITY, &poll_task) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create Telegram poll task");
+        return;
+    }
+
+    if (xTaskCreate(telegram_send_task, "tg_send", CHANNEL_TASK_STACK_SIZE, NULL,
+                    CHANNEL_TASK_PRIORITY, NULL) != pdPASS) {
+        ESP_LOGE(TAG, "Failed to create Telegram send task");
+        vTaskDelete(poll_task);
+        return;
+    }
 
     ESP_LOGI(TAG, "Telegram tasks started");
 }

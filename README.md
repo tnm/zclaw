@@ -102,7 +102,7 @@ Or use the convenience scripts:
 
 ### First Boot
 
-1. On first boot, zclaw creates a WiFi AP: `zclaw-Setup`
+1. On first boot, zclaw creates a WiFi AP: `zclaw-setup`
 2. Check serial output for the randomly generated AP password
 3. Connect to the AP and open `http://192.168.4.1`
 4. Scan/select your SSID (or enter manually), then fill credentials and tokens
@@ -206,7 +206,7 @@ Edit `main/config.h` to customize:
 #define LLM_DEFAULT_MODEL_OPENAI    "gpt-5.2"             // OpenAI default
 #define LLM_DEFAULT_MODEL_OPENROUTER "minimax/minimax-m2.5" // OpenRouter default
 #define LLM_MAX_TOKENS 1024                   // Max response tokens
-#define MAX_HISTORY_TURNS 4                   // Conversation history length
+#define MAX_HISTORY_TURNS 8                   // Conversation history length
 #define RATELIMIT_MAX_PER_HOUR 30             // LLM requests per hour
 #define RATELIMIT_MAX_PER_DAY 200             // LLM requests per day
 ```

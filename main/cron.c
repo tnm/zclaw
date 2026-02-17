@@ -220,7 +220,15 @@ void cron_list(char *buf, size_t buf_len)
         if (s_entries[i].id == 0) continue;
 
         cJSON *obj = cJSON_CreateObject();
-        cJSON_AddNumberToObject(obj, "id", s_entries[i].id);
+        if (!obj) {
+            ESP_LOGE(TAG, "Failed to allocate cron list entry object");
+            cJSON_Delete(arr);
+            snprintf(buf, buf_len, "[]");
+            return;
+        }
+
+        bool ok = true;
+        ok &= cJSON_AddNumberToObject(obj, "id", s_entries[i].id) != NULL;
 
         const char *type_str = "unknown";
         switch (s_entries[i].type) {
@@ -228,18 +236,25 @@ void cron_list(char *buf, size_t buf_len)
             case CRON_TYPE_DAILY: type_str = "daily"; break;
             case CRON_TYPE_CONDITION: type_str = "condition"; break;
         }
-        cJSON_AddStringToObject(obj, "type", type_str);
+        ok &= cJSON_AddStringToObject(obj, "type", type_str) != NULL;
 
         if (s_entries[i].type == CRON_TYPE_PERIODIC) {
-            cJSON_AddNumberToObject(obj, "interval_minutes", s_entries[i].interval_minutes);
+            ok &= cJSON_AddNumberToObject(obj, "interval_minutes", s_entries[i].interval_minutes) != NULL;
         } else {
             char time_str[8];
             snprintf(time_str, sizeof(time_str), "%02d:%02d", s_entries[i].hour, s_entries[i].minute);
-            cJSON_AddStringToObject(obj, "time", time_str);
+            ok &= cJSON_AddStringToObject(obj, "time", time_str) != NULL;
         }
 
-        cJSON_AddStringToObject(obj, "action", s_entries[i].action);
-        cJSON_AddBoolToObject(obj, "enabled", s_entries[i].enabled);
+        ok &= cJSON_AddStringToObject(obj, "action", s_entries[i].action) != NULL;
+        ok &= cJSON_AddBoolToObject(obj, "enabled", s_entries[i].enabled) != NULL;
+        if (!ok) {
+            ESP_LOGE(TAG, "Failed to build cron list entry JSON");
+            cJSON_Delete(obj);
+            cJSON_Delete(arr);
+            snprintf(buf, buf_len, "[]");
+            return;
+        }
 
         cJSON_AddItemToArray(arr, obj);
     }
@@ -256,21 +271,22 @@ void cron_list(char *buf, size_t buf_len)
     cJSON_Delete(arr);
 }
 
-bool cron_delete(uint8_t id)
+esp_err_t cron_delete(uint8_t id)
 {
     for (int i = 0; i < CRON_MAX_ENTRIES; i++) {
         if (s_entries[i].id == id) {
             cron_entry_t previous_entry = s_entries[i];
             s_entries[i].id = 0;
-            if (save_entry(i) != ESP_OK) {
+            esp_err_t err = save_entry(i);
+            if (err != ESP_OK) {
                 s_entries[i] = previous_entry;
-                return false;
+                return err;
             }
             ESP_LOGI(TAG, "Deleted cron entry %d", id);
-            return true;
+            return ESP_OK;
         }
     }
-    return false;
+    return ESP_ERR_NOT_FOUND;
 }
 
 // Check and fire due entries

@@ -40,7 +40,7 @@ uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, co
 void cron_list(char *buf, size_t buf_len);
 
 // Delete a cron entry by ID
-bool cron_delete(uint8_t id);
+esp_err_t cron_delete(uint8_t id);
 
 // Get current time as string
 void cron_get_time_str(char *buf, size_t buf_len);

@@ -100,12 +100,19 @@ bool tools_cron_delete_handler(const cJSON *input, char *result, size_t result_l
         return false;
     }
 
-    if (cron_delete(id_json->valueint)) {
+    esp_err_t err = cron_delete(id_json->valueint);
+    if (err == ESP_OK) {
         snprintf(result, result_len, "Deleted schedule #%d", id_json->valueint);
         return true;
     }
-    snprintf(result, result_len, "Schedule #%d not found", id_json->valueint);
-    return true;
+    if (err == ESP_ERR_NOT_FOUND) {
+        snprintf(result, result_len, "Schedule #%d not found", id_json->valueint);
+        return true;
+    }
+
+    snprintf(result, result_len, "Error: failed to delete schedule #%d (%s)",
+             id_json->valueint, esp_err_to_name(err));
+    return false;
 }
 
 bool tools_get_time_handler(const cJSON *input, char *result, size_t result_len)

@@ -310,15 +310,21 @@ static void cron_task(void *arg)
     }
 }
 
-void cron_start(QueueHandle_t agent_input_queue)
+esp_err_t cron_start(QueueHandle_t agent_input_queue)
 {
+    if (!agent_input_queue) {
+        ESP_LOGE(TAG, "Invalid queue for cron startup");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     s_agent_queue = agent_input_queue;
 
     if (xTaskCreate(cron_task, "cron", CRON_TASK_STACK_SIZE, NULL,
                     CRON_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create cron task");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     ESP_LOGI(TAG, "Cron task started");
+    return ESP_OK;
 }

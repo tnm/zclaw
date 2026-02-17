@@ -31,7 +31,7 @@ typedef struct {
 esp_err_t cron_init(void);
 
 // Start cron task
-void cron_start(QueueHandle_t agent_input_queue);
+esp_err_t cron_start(QueueHandle_t agent_input_queue);
 
 // Add/update a cron entry (returns entry ID, or 0 on error)
 uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, const char *action);

@@ -10,7 +10,7 @@
 esp_err_t telegram_init(void);
 
 // Start Telegram polling task
-void telegram_start(QueueHandle_t input_queue, QueueHandle_t output_queue);
+esp_err_t telegram_start(QueueHandle_t input_queue, QueueHandle_t output_queue);
 
 // Send a message to the configured chat
 esp_err_t telegram_send(const char *text);

@@ -259,10 +259,15 @@ static void agent_task(void *arg)
     }
 }
 
-void agent_start(QueueHandle_t input_queue,
-                 QueueHandle_t channel_output_queue,
-                 QueueHandle_t telegram_output_queue)
+esp_err_t agent_start(QueueHandle_t input_queue,
+                      QueueHandle_t channel_output_queue,
+                      QueueHandle_t telegram_output_queue)
 {
+    if (!input_queue || !channel_output_queue) {
+        ESP_LOGE(TAG, "Invalid queues for agent startup");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     s_input_queue = input_queue;
     s_channel_output_queue = channel_output_queue;
     s_telegram_output_queue = telegram_output_queue;
@@ -270,8 +275,9 @@ void agent_start(QueueHandle_t input_queue,
     if (xTaskCreate(agent_task, "agent", AGENT_TASK_STACK_SIZE, NULL,
                     AGENT_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create agent task");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     ESP_LOGI(TAG, "Agent started");
+    return ESP_OK;
 }

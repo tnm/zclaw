@@ -148,8 +148,13 @@ static void channel_write_task(void *arg)
     }
 }
 
-void channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
+esp_err_t channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
 {
+    if (!input_queue || !output_queue) {
+        ESP_LOGE(TAG, "Invalid queues for channel startup");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     s_input_queue = input_queue;
     s_output_queue = output_queue;
 
@@ -157,17 +162,18 @@ void channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
     if (xTaskCreate(channel_read_task, "ch_read", CHANNEL_TASK_STACK_SIZE, NULL,
                     CHANNEL_TASK_PRIORITY, &read_task) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create channel read task");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     if (xTaskCreate(channel_write_task, "ch_write", CHANNEL_TASK_STACK_SIZE, NULL,
                     CHANNEL_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create channel write task");
         vTaskDelete(read_task);
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     ESP_LOGI(TAG, "Channel tasks started");
+    return ESP_OK;
 }
 
 void channel_write(const char *text)

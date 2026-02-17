@@ -352,8 +352,13 @@ static void telegram_poll_task(void *arg)
     }
 }
 
-void telegram_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
+esp_err_t telegram_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
 {
+    if (!input_queue || !output_queue) {
+        ESP_LOGE(TAG, "Invalid queues for Telegram startup");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     s_input_queue = input_queue;
     s_output_queue = output_queue;
 
@@ -361,15 +366,16 @@ void telegram_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
     if (xTaskCreate(telegram_poll_task, "tg_poll", CHANNEL_TASK_STACK_SIZE, NULL,
                     CHANNEL_TASK_PRIORITY, &poll_task) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create Telegram poll task");
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     if (xTaskCreate(telegram_send_task, "tg_send", CHANNEL_TASK_STACK_SIZE, NULL,
                     CHANNEL_TASK_PRIORITY, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create Telegram send task");
         vTaskDelete(poll_task);
-        return;
+        return ESP_ERR_NO_MEM;
     }
 
     ESP_LOGI(TAG, "Telegram tasks started");
+    return ESP_OK;
 }

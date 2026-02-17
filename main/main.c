@@ -35,6 +35,13 @@ static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 static bool s_safe_mode = false;
 
+static void fail_fast_startup(const char *component, esp_err_t err)
+{
+    ESP_LOGE(TAG, "Startup failure in %s: %s", component, esp_err_to_name(err));
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    esp_restart();
+}
+
 // Boot loop protection
 static int get_boot_count(void)
 {
@@ -238,8 +245,15 @@ void app_main(void)
         esp_restart();
     }
 
-    channel_start(input_queue, channel_output_queue);
-    agent_start(input_queue, channel_output_queue, NULL);
+    esp_err_t startup_err = channel_start(input_queue, channel_output_queue);
+    if (startup_err != ESP_OK) {
+        fail_fast_startup("channel_start", startup_err);
+    }
+
+    startup_err = agent_start(input_queue, channel_output_queue, NULL);
+    if (startup_err != ESP_OK) {
+        fail_fast_startup("agent_start", startup_err);
+    }
 
     channel_write("\r\nzclaw emulator ready. Type a message and press Enter.\r\n\r\n");
 
@@ -262,7 +276,10 @@ void app_main(void)
         wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
         ESP_ERROR_CHECK(esp_wifi_init(&cfg));
 
-        websetup_start_ap_mode();
+        esp_err_t websetup_err = websetup_start_ap_mode();
+        if (websetup_err != ESP_OK) {
+            fail_fast_startup("websetup_start_ap_mode", websetup_err);
+        }
 
         // Stay in setup mode forever (will restart after config saved)
         while (1) {
@@ -295,7 +312,10 @@ void app_main(void)
 #if CONFIG_ZCLAW_STUB_TELEGRAM
     ESP_LOGW(TAG, "Telegram stub mode enabled; skipping Telegram startup");
 #else
-    telegram_init();  // May fail if not configured, that's OK
+    esp_err_t telegram_init_err = telegram_init();  // Missing token is non-fatal
+    if (telegram_init_err != ESP_OK && telegram_init_err != ESP_ERR_NOT_FOUND) {
+        fail_fast_startup("telegram_init", telegram_init_err);
+    }
 #endif
 
     // 11. Register tools
@@ -323,22 +343,37 @@ void app_main(void)
     }
 
     // 14. Start channel task (USB serial)
-    channel_start(input_queue, channel_output_queue);
+    esp_err_t startup_err = channel_start(input_queue, channel_output_queue);
+    if (startup_err != ESP_OK) {
+        fail_fast_startup("channel_start", startup_err);
+    }
 
     // 15. Start Telegram channel
     if (telegram_enabled) {
-        telegram_start(input_queue, telegram_output_queue);
+        startup_err = telegram_start(input_queue, telegram_output_queue);
+        if (startup_err != ESP_OK) {
+            fail_fast_startup("telegram_start", startup_err);
+        }
     }
 
     // 16. Start agent task
-    agent_start(input_queue, channel_output_queue, telegram_output_queue);
+    startup_err = agent_start(input_queue, channel_output_queue, telegram_output_queue);
+    if (startup_err != ESP_OK) {
+        fail_fast_startup("agent_start", startup_err);
+    }
 
     // 17. Start cron task
-    cron_start(input_queue);
+    startup_err = cron_start(input_queue);
+    if (startup_err != ESP_OK) {
+        fail_fast_startup("cron_start", startup_err);
+    }
 
     // 18. Start web config server (for reconfiguration)
 #if WEBSETUP_ENABLE_STA_SERVER
-    websetup_start_sta_mode();
+    esp_err_t websetup_err = websetup_start_sta_mode();
+    if (websetup_err != ESP_OK) {
+        fail_fast_startup("websetup_start_sta_mode", websetup_err);
+    }
 #else
     ESP_LOGI(TAG, "Web setup server disabled in STA mode");
 #endif

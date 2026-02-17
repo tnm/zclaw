@@ -71,10 +71,29 @@ typedef enum {
     "you'll receive an action to execute - carry it out using your built-in tools."
 
 // -----------------------------------------------------------------------------
-// GPIO (safe pins on XIAO ESP32C3)
+// GPIO tool safety range (configurable via Kconfig)
 // -----------------------------------------------------------------------------
+#ifdef CONFIG_ZCLAW_GPIO_MIN_PIN
+#define GPIO_MIN_PIN            CONFIG_ZCLAW_GPIO_MIN_PIN
+#else
 #define GPIO_MIN_PIN            2
+#endif
+
+#ifdef CONFIG_ZCLAW_GPIO_MAX_PIN
+#define GPIO_MAX_PIN            CONFIG_ZCLAW_GPIO_MAX_PIN
+#else
 #define GPIO_MAX_PIN            10
+#endif
+
+#ifdef CONFIG_ZCLAW_GPIO_ALLOWED_PINS
+#define GPIO_ALLOWED_PINS_CSV   CONFIG_ZCLAW_GPIO_ALLOWED_PINS
+#else
+#define GPIO_ALLOWED_PINS_CSV   ""
+#endif
+
+#if GPIO_MIN_PIN > GPIO_MAX_PIN
+#error "GPIO_MIN_PIN must be <= GPIO_MAX_PIN"
+#endif
 
 // -----------------------------------------------------------------------------
 // NVS (persistent storage)

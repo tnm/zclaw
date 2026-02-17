@@ -9,6 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ESP_IDF_VERSION="v5.4"
 ESP_IDF_DIR="$HOME/esp/esp-idf"
+ESP_IDF_CHIPS="esp32c3,esp32s3"
 
 # Colors
 RED='\033[0;31m'
@@ -101,6 +102,7 @@ echo "This script will set up your development environment:"
 echo -e "  ${GREEN}•${NC} ESP-IDF $ESP_IDF_VERSION ${DIM}(required for building)${NC}"
 echo -e "  ${GREEN}•${NC} QEMU ${DIM}(optional, for emulation)${NC}"
 echo -e "  ${GREEN}•${NC} cJSON ${DIM}(optional, for host tests)${NC}"
+echo -e "  ${GREEN}•${NC} Flash helpers with serial + board-chip detection"
 echo ""
 
 OS=$(detect_os)
@@ -166,9 +168,9 @@ else
 
         # Install ESP-IDF tools
         echo ""
-        echo "Installing ESP-IDF tools for ESP32..."
+        echo "Installing ESP-IDF tools for: $ESP_IDF_CHIPS"
         cd "$ESP_IDF_DIR"
-        ./install.sh esp32c3
+        ./install.sh "$ESP_IDF_CHIPS"
 
         print_status "ESP-IDF installed successfully"
     else
@@ -292,10 +294,31 @@ if [ "$BUILD_SUCCESS" = true ]; then
 
     if [ -n "$PORTS" ]; then
         print_status "Found serial port(s):"
+        PORT_LIST=()
         for port in $PORTS; do
             echo "     $port"
+            PORT_LIST+=("$port")
         done
         echo ""
+
+        FLASH_PORT=""
+        if [ "${#PORT_LIST[@]}" -eq 1 ]; then
+            FLASH_PORT="${PORT_LIST[0]}"
+            print_status "Auto-selected device: $FLASH_PORT"
+            echo ""
+        elif [ -t 0 ]; then
+            read -r -p "Select device [1-${#PORT_LIST[@]}] or Enter for auto-detect in flash script: " port_choice
+            if [ -n "$port_choice" ]; then
+                if [[ "$port_choice" =~ ^[0-9]+$ ]] && [ "$port_choice" -ge 1 ] && [ "$port_choice" -le "${#PORT_LIST[@]}" ]; then
+                    FLASH_PORT="${PORT_LIST[$((port_choice - 1))]}"
+                    print_status "Using selected device: $FLASH_PORT"
+                    echo ""
+                else
+                    print_warning "Invalid selection. Flash script will auto-detect instead."
+                    echo ""
+                fi
+            fi
+        fi
 
         if ask_yes_no "Flash firmware now?"; then
             echo ""
@@ -308,7 +331,9 @@ if [ "$BUILD_SUCCESS" = true ]; then
             echo "     Credentials encrypted. PERMANENT - cannot be undone."
             echo "     Saves encryption key to keys/ for future flashing."
             echo ""
-            read -p "Choose [1/2]: " flash_choice
+            echo "Both flash scripts auto-detect board chip and can switch target if needed."
+            echo ""
+            read -r -p "Choose [1/2]: " flash_choice
             flash_choice="${flash_choice:-1}"
 
             echo ""
@@ -318,16 +343,20 @@ if [ "$BUILD_SUCCESS" = true ]; then
             cd "$SCRIPT_DIR"
 
             if [ "$flash_choice" = "2" ]; then
-                # Secure flash
-                if ./scripts/flash-secure.sh; then
+                flash_cmd=(./scripts/flash-secure.sh)
+                [ -n "$FLASH_PORT" ] && flash_cmd+=("$FLASH_PORT")
+
+                if "${flash_cmd[@]}"; then
                     echo ""
                     print_status "Secure flash complete!"
                 else
                     print_error "Secure flash failed"
                 fi
             else
-                # Standard flash
-                if bash -c "source '$ESP_IDF_DIR/export.sh' && idf.py flash"; then
+                flash_cmd=(./scripts/flash.sh)
+                [ -n "$FLASH_PORT" ] && flash_cmd+=("$FLASH_PORT")
+
+                if "${flash_cmd[@]}"; then
                     echo ""
                     print_status "Flash complete!"
 
@@ -336,7 +365,9 @@ if [ "$BUILD_SUCCESS" = true ]; then
                         echo ""
                         echo "Starting monitor (Ctrl+] to exit)..."
                         echo ""
-                        bash -c "source '$ESP_IDF_DIR/export.sh' && idf.py monitor"
+                        monitor_cmd=(./scripts/monitor.sh)
+                        [ -n "$FLASH_PORT" ] && monitor_cmd+=("$FLASH_PORT")
+                        "${monitor_cmd[@]}"
                     fi
                 else
                     print_error "Flash failed"

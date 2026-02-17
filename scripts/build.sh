@@ -19,7 +19,7 @@ else
     echo "Error: ESP-IDF not found. Install it first:"
     echo "  mkdir -p ~/esp && cd ~/esp"
     echo "  git clone -b v5.4 --recursive https://github.com/espressif/esp-idf.git"
-    echo "  cd esp-idf && ./install.sh esp32c3"
+    echo "  cd esp-idf && ./install.sh esp32c3,esp32s3"
     exit 1
 fi
 

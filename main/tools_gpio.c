@@ -5,11 +5,58 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 // Max delay to prevent accidental lockups (60 seconds)
 #define DELAY_MAX_MS 60000
 
 static const char *TAG = "tools";
+
+static bool gpio_pin_in_allowlist(int pin, const char *csv)
+{
+    const char *cursor;
+
+    if (!csv || csv[0] == '\0') {
+        return false;
+    }
+
+    cursor = csv;
+    while (*cursor != '\0') {
+        char *endptr = NULL;
+        long value;
+
+        while (*cursor == ' ' || *cursor == '\t' || *cursor == ',') {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+
+        value = strtol(cursor, &endptr, 10);
+        if (endptr == cursor) {
+            while (*cursor != '\0' && *cursor != ',') {
+                cursor++;
+            }
+            continue;
+        }
+
+        if ((int)value == pin) {
+            return true;
+        }
+        cursor = endptr;
+    }
+
+    return false;
+}
+
+static bool gpio_pin_is_allowed(int pin)
+{
+    if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
+        return gpio_pin_in_allowlist(pin, GPIO_ALLOWED_PINS_CSV);
+    }
+    return pin >= GPIO_MIN_PIN && pin <= GPIO_MAX_PIN;
+}
 
 bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_len)
 {
@@ -28,8 +75,12 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
     int pin = pin_json->valueint;
     int state = state_json->valueint;
 
-    if (pin < GPIO_MIN_PIN || pin > GPIO_MAX_PIN) {
-        snprintf(result, result_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
+    if (!gpio_pin_is_allowed(pin)) {
+        if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
+            snprintf(result, result_len, "Error: pin %d is not in allowed list", pin);
+        } else {
+            snprintf(result, result_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
+        }
         return false;
     }
 
@@ -52,8 +103,12 @@ bool tools_gpio_read_handler(const cJSON *input, char *result, size_t result_len
 
     int pin = pin_json->valueint;
 
-    if (pin < GPIO_MIN_PIN || pin > GPIO_MAX_PIN) {
-        snprintf(result, result_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
+    if (!gpio_pin_is_allowed(pin)) {
+        if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
+            snprintf(result, result_len, "Error: pin %d is not in allowed list", pin);
+        } else {
+            snprintf(result, result_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
+        }
         return false;
     }
 
@@ -92,3 +147,13 @@ bool tools_delay_handler(const cJSON *input, char *result, size_t result_len)
     snprintf(result, result_len, "Waited %d ms", ms);
     return true;
 }
+
+#ifdef TEST_BUILD
+bool tools_gpio_test_pin_is_allowed(int pin, const char *csv, int min_pin, int max_pin)
+{
+    if (csv && csv[0] != '\0') {
+        return gpio_pin_in_allowlist(pin, csv);
+    }
+    return pin >= min_pin && pin <= max_pin;
+}
+#endif

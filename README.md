@@ -1,10 +1,14 @@
 # zclaw
 
-The smallest possible AI personal assistant running on an ESP32. 
+The smallest possible AI personal assistant. 
+
+Runs on an ESP32. Or runs on many of them. Put one everywhere!
 
 Talk to your agent via Telegram for ~$5 in hardware. 
 
-Create scheduled tasks & custom tools, ask questions, use sensors and cameras.
+Create scheduled tasks & custom tools, ask questions, and use sensors.
+
+![Lobster soldering a Seeed Studio XIAO ESP32-C3](docs/images/lobster-xiao-esp32c3.png)
 
 ```
 You: "Remind me to water the plants every morning at 8am"
@@ -26,7 +30,7 @@ Agent: Done. GPIO2 is now off.
 - **Persistent memory** — Remembers things across reboots
 - **Any LLM backend** — Anthropic, OpenAI, or open source models via OpenRouter
 - **$5 hardware** — Just an ESP32 dev board and WiFi
-- **~900 KB binary** — Fits in dual OTA partitions with 37% free
+- **~960 KB binary** — Fits in dual OTA partitions with 36% free
 
 ### Coming Soon
 
@@ -37,18 +41,23 @@ Agent: Done. GPIO2 is now off.
 
 ## Hardware
 
-**Any ESP32 board** works - no board-specific dependencies.
+Supported and tested targets are **ESP32-C3** and **ESP32-S3**.
+Other ESP32 variants may work on a best-effort basis, but may require manual
+ESP-IDF tool install/target setup.
+
+Default GPIO tool pin limits are configured for ESP32-C3 dev workflows (`GPIO 2-10`).
+If your board wiring differs, adjust `ZClaw Configuration -> GPIO Tool Safety`
+in `idf.py menuconfig`.
+For boards with non-contiguous pins (for example XIAO ESP32S3), set
+`Allowed GPIO pins list` to a comma-separated whitelist.
+Example for XIAO ESP32S3 D0-D10:
+`1,2,3,4,5,6,7,8,9,43,44`
 
 Good choice: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html) (~$5)
 - Tiny (21x17mm), USB-C, built-in antenna
 - RISC-V core, 160MHz, 400KB SRAM, 4MB flash
 
 Other options: ESP32-DevKitM, Adafruit QT Py, any generic ESP32 module.
-
-**ESP32-S3** (with *Sense* for built-in camera/voice)
-- Dual-core 240MHz, 512KB+ SRAM, 8MB+ flash
-- OV2640 camera, I2S microphone support
-- Cost: ~$8-15 USD
 
 ## Quick Start
 
@@ -59,6 +68,7 @@ Other options: ESP32-DevKitM, Adafruit QT Py, any generic ESP32 module.
 ```
 
 This interactive script installs ESP-IDF, QEMU, and dependencies. Works on macOS and Linux.
+It also points you to flash helpers that auto-detect serial port/chip and can switch `idf.py` target on mismatch.
 
 ### Manual Setup
 
@@ -69,7 +79,7 @@ This interactive script installs ESP-IDF, QEMU, and dependencies. Works on macOS
 # Install ESP-IDF v5.4
 mkdir -p ~/esp && cd ~/esp
 git clone -b v5.4 --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf && ./install.sh esp32c3
+cd esp-idf && ./install.sh esp32c3,esp32s3
 ```
 
 </details>
@@ -99,6 +109,9 @@ Or use the convenience scripts:
 ./scripts/exit-emulator.sh  # Stop QEMU emulator
 ./scripts/web-preview.sh    # Preview setup UI locally
 ```
+
+`flash.sh` and `flash-secure.sh` auto-detect connected chip type and prompt to run
+`idf.py set-target <chip>` when project target does not match the board.
 
 ### First Boot
 
@@ -156,8 +169,8 @@ Or use the convenience scripts:
 | `cron_delete` | Delete scheduled task |
 | `get_time` | Get current time |
 | `get_version` | Get firmware version |
-| `get_health` | Get device health (heap, rate limits, uptime) |
-| `check_update` | Manifest-based update check (currently not implemented) |
+| `get_health` | Get device health (heap, rate limits, time sync, version) |
+| `check_update` | Check whether an update is available (currently not implemented) |
 | `install_update` | Download and install firmware update |
 | `create_tool` | Create a custom user-defined tool |
 | `list_user_tools` | List all user-created tools |
@@ -210,6 +223,10 @@ Edit `main/config.h` to customize:
 #define RATELIMIT_MAX_PER_HOUR 30             // LLM requests per hour
 #define RATELIMIT_MAX_PER_DAY 200             // LLM requests per day
 ```
+
+Board-specific GPIO safety range is configured in `idf.py menuconfig` under
+`ZClaw Configuration -> GPIO Tool Safety`.
+You can use either min/max range or an explicit pin allowlist.
 
 ## Development
 
@@ -294,8 +311,8 @@ Then open http://127.0.0.1:8080.
 
 | Resource | Used | Free |
 |----------|------|------|
-| DRAM | ~145 KB | ~176 KB |
-| Flash (per OTA slot) | 932 KB | 540 KB (37%) |
+| DRAM | ~149 KB | ~172 KB |
+| Flash (per OTA slot) | ~960 KB | ~548 KB (36%) |
 
 ## Safety Features
 
@@ -381,7 +398,8 @@ If you don't enable encryption and lose the device, immediately revoke:
 
 ## Factory Reset
 
-Hold GPIO9 (BOOT button) for 5+ seconds during startup to erase all settings.
+Default is GPIO9 (BOOT on XIAO ESP32-C3): hold for 5+ seconds during startup
+to erase all settings. On other boards, update `FACTORY_RESET_PIN` in `main/config.h`.
 
 ## License
 

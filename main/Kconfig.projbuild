@@ -46,4 +46,30 @@ menu "ZClaw Configuration"
             Starts only local channel + agent loop, without WiFi-dependent startup.
             Intended for QEMU development workflows.
 
+    menu "GPIO Tool Safety"
+        config ZCLAW_GPIO_MIN_PIN
+            int "Minimum GPIO pin exposed to tools"
+            range 0 48
+            default 2
+            help
+                Lower bound for gpio_write/gpio_read tool access.
+                Set this to match safe, wired pins on your board.
+
+        config ZCLAW_GPIO_MAX_PIN
+            int "Maximum GPIO pin exposed to tools"
+            range 0 48
+            default 10
+            help
+                Upper bound for gpio_write/gpio_read tool access.
+                Set this to match safe, wired pins on your board.
+
+        config ZCLAW_GPIO_ALLOWED_PINS
+            string "Allowed GPIO pins list (optional)"
+            default ""
+            help
+                Optional comma-separated allowlist for gpio_write/gpio_read.
+                Example: "1,2,3,4,5,6,7,8,9,43,44"
+                When set (non-empty), this list is used instead of min/max range.
+    endmenu
+
 endmenu

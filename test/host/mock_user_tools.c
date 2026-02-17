@@ -30,7 +30,7 @@ bool user_tools_delete(const char *name) {
 int user_tools_get_all(user_tool_t *tools, int max_count) {
     int count = s_mock_count < max_count ? s_mock_count : max_count;
     if (tools && count > 0) {
-        memcpy(tools, s_mock_tools, count * sizeof(user_tool_t));
+        memcpy(tools, s_mock_tools, (size_t)count * sizeof(user_tool_t));
     }
     return count;
 }

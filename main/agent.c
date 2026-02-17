@@ -158,6 +158,10 @@ static void process_message(const char *user_message)
                 break;
             }
 
+            if (retry == LLM_MAX_RETRIES - 1) {
+                break;
+            }
+
             ESP_LOGW(TAG, "LLM request failed (attempt %d/%d), retrying in %dms",
                      retry + 1, LLM_MAX_RETRIES, retry_delay_ms);
             vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
@@ -245,9 +249,34 @@ static void process_message(const char *user_message)
     }
 }
 
+#ifdef TEST_BUILD
+void agent_test_reset(void)
+{
+    memset(s_history, 0, sizeof(s_history));
+    s_history_len = 0;
+    memset(s_response_buf, 0, sizeof(s_response_buf));
+    memset(s_tool_result_buf, 0, sizeof(s_tool_result_buf));
+    s_channel_output_queue = NULL;
+    s_telegram_output_queue = NULL;
+}
+
+void agent_test_set_queues(QueueHandle_t channel_output_queue,
+                           QueueHandle_t telegram_output_queue)
+{
+    s_channel_output_queue = channel_output_queue;
+    s_telegram_output_queue = telegram_output_queue;
+}
+
+void agent_test_process_message(const char *user_message)
+{
+    process_message(user_message);
+}
+#endif
+
 // Agent task
 static void agent_task(void *arg)
 {
+    (void)arg;
     channel_msg_t msg;
 
     ESP_LOGI(TAG, "Agent task started");

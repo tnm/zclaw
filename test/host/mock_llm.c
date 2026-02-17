@@ -1,8 +1,31 @@
 #include "mock_llm.h"
+#include "config.h"
 #include <string.h>
+#include <stdio.h>
+
+#define MOCK_MAX_RESULTS 16
+#define MOCK_RESPONSE_MAX_LEN LLM_RESPONSE_BUF_SIZE
+
+typedef struct {
+    esp_err_t err;
+    char response[MOCK_RESPONSE_MAX_LEN];
+    bool has_response;
+} llm_result_t;
 
 static llm_backend_t s_backend = LLM_BACKEND_ANTHROPIC;
 static char s_model[64] = "mock-model";
+static llm_result_t s_results[MOCK_MAX_RESULTS];
+static int s_result_count = 0;
+static int s_result_index = 0;
+static int s_request_count = 0;
+
+void mock_llm_reset(void)
+{
+    memset(s_results, 0, sizeof(s_results));
+    s_result_count = 0;
+    s_result_index = 0;
+    s_request_count = 0;
+}
 
 void mock_llm_set_backend(llm_backend_t backend, const char *model)
 {
@@ -13,6 +36,29 @@ void mock_llm_set_backend(llm_backend_t backend, const char *model)
     }
 }
 
+bool mock_llm_push_result(esp_err_t err, const char *response_json)
+{
+    llm_result_t *entry;
+
+    if (s_result_count >= MOCK_MAX_RESULTS) {
+        return false;
+    }
+
+    entry = &s_results[s_result_count++];
+    entry->err = err;
+    if (response_json) {
+        strncpy(entry->response, response_json, sizeof(entry->response) - 1);
+        entry->response[sizeof(entry->response) - 1] = '\0';
+        entry->has_response = true;
+    }
+    return true;
+}
+
+int mock_llm_request_count(void)
+{
+    return s_request_count;
+}
+
 esp_err_t llm_init(void)
 {
     return ESP_OK;
@@ -20,10 +66,28 @@ esp_err_t llm_init(void)
 
 esp_err_t llm_request(const char *request_json, char *response_buf, size_t response_buf_size)
 {
+    llm_result_t result = {0};
+    const char *default_response =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"mock ok\"}],\"stop_reason\":\"end_turn\"}";
+
     (void)request_json;
-    (void)response_buf;
-    (void)response_buf_size;
-    return ESP_OK;
+    s_request_count++;
+
+    if (s_result_index < s_result_count) {
+        result = s_results[s_result_index++];
+    } else {
+        result.err = ESP_OK;
+        result.has_response = true;
+        strncpy(result.response, default_response, sizeof(result.response) - 1);
+        result.response[sizeof(result.response) - 1] = '\0';
+    }
+
+    if (result.err == ESP_OK && response_buf && response_buf_size > 0) {
+        const char *to_copy = result.has_response ? result.response : default_response;
+        snprintf(response_buf, response_buf_size, "%s", to_copy);
+    }
+
+    return result.err;
 }
 
 bool llm_is_stub_mode(void)

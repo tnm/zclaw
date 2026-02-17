@@ -125,6 +125,26 @@ TEST(form_urlencoded_bounds)
     return 0;
 }
 
+TEST(form_urlencoded_malformed_segments)
+{
+    const char *body = "badsegment&ssid=Good+Network&broken==oops";
+    char ssid[32] = {0};
+
+    ASSERT(form_urlencoded_get_field(body, "ssid", ssid, sizeof(ssid)));
+    ASSERT(strcmp(ssid, "Good Network") == 0);
+    return 0;
+}
+
+TEST(form_urlencoded_empty_key_is_ignored)
+{
+    const char *body = "=oops&model=gpt-5.2";
+    char model[32] = {0};
+
+    ASSERT(form_urlencoded_get_field(body, "model", model, sizeof(model)));
+    ASSERT(strcmp(model, "gpt-5.2") == 0);
+    return 0;
+}
+
 TEST(telegram_channel_capacity_config)
 {
     ASSERT(TELEGRAM_MAX_MSG_LEN > CHANNEL_RX_BUF_SIZE);
@@ -182,6 +202,20 @@ int test_runtime_utils_all(void)
 
     printf("  form_urlencoded_bounds... ");
     if (test_form_urlencoded_bounds() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  form_urlencoded_malformed_segments... ");
+    if (test_form_urlencoded_malformed_segments() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  form_urlencoded_empty_key_is_ignored... ");
+    if (test_form_urlencoded_empty_key_is_ignored() == 0) {
         printf("OK\n");
     } else {
         failures++;

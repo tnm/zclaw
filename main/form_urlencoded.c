@@ -69,27 +69,38 @@ bool form_urlencoded_get_field(
     const char *cursor = body;
 
     while (*cursor != '\0') {
-        const char *key_start = cursor;
-        const char *sep = strchr(key_start, '=');
-        const char *amp = strchr(key_start, '&');
+        const char *segment_start = cursor;
+        const char *segment_end = strchr(segment_start, '&');
+        const char *sep = NULL;
+        size_t segment_len;
 
-        if (!sep || (amp && amp < sep)) {
-            return false;
+        if (!segment_end) {
+            segment_end = segment_start + strlen(segment_start);
+        }
+        segment_len = (size_t)(segment_end - segment_start);
+
+        for (size_t i = 0; i < segment_len; i++) {
+            if (segment_start[i] == '=') {
+                sep = segment_start + i;
+                break;
+            }
         }
 
-        size_t key_len = (size_t)(sep - key_start);
-        if (key_len == field_len && strncmp(key_start, field, field_len) == 0) {
-            const char *val_start = sep + 1;
-            const char *val_end = amp ? amp : key_start + strlen(key_start);
-            size_t val_len = (size_t)(val_end - val_start);
-            url_decode_segment(value, value_len, val_start, val_len);
-            return true;
+        if (sep) {
+            size_t key_len = (size_t)(sep - segment_start);
+            if (key_len == field_len && strncmp(segment_start, field, field_len) == 0) {
+                const char *val_start = sep + 1;
+                const char *val_end = segment_end;
+                size_t val_len = (size_t)(val_end - val_start);
+                url_decode_segment(value, value_len, val_start, val_len);
+                return true;
+            }
         }
 
-        if (!amp) {
+        if (*segment_end == '\0') {
             break;
         }
-        cursor = amp + 1;
+        cursor = segment_end + 1;
     }
 
     return false;

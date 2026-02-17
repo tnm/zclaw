@@ -14,10 +14,13 @@ extern int test_runtime_utils_all(void);
 extern int test_websetup_assets_all(void);
 extern int test_memory_keys_all(void);
 extern int test_telegram_update_all(void);
+extern int test_agent_all(void);
 
 int main(int argc, char *argv[])
 {
     int failures = 0;
+    (void)argc;
+    (void)argv;
 
     printf("zclaw Host Tests\n");
     printf("===================\n\n");
@@ -29,6 +32,7 @@ int main(int argc, char *argv[])
     failures += test_websetup_assets_all();
     failures += test_memory_keys_all();
     failures += test_telegram_update_all();
+    failures += test_agent_all();
 
     printf("\n===================\n");
     if (failures == 0) {

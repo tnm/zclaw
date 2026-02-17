@@ -32,16 +32,20 @@ run_host_tests() {
         CJSON_LDFLAGS="-L/usr/local/lib -lcjson"
     fi
 
-    # AddressSanitizer flags for memory error detection
+    # AddressSanitizer flags for memory error detection (enabled by default).
     SANITIZE_FLAGS=""
-    if [ "$ASAN" = "1" ]; then
-        echo "AddressSanitizer enabled"
+    if [ "${ASAN:-1}" = "1" ]; then
+        echo "AddressSanitizer enabled (set ASAN=0 to disable)"
         SANITIZE_FLAGS="-fsanitize=address -fno-omit-frame-pointer -g"
     fi
+
+    # Keep host tests warning-clean to prevent quality regressions.
+    WARNING_FLAGS="-Wall -Wextra -Werror -Wshadow -Wformat=2"
 
     # Compile test runner
     gcc -o build/test_runner $SANITIZE_FLAGS \
         -std=c99 \
+        $WARNING_FLAGS \
         -I../../main \
         -I. \
         $CJSON_CFLAGS \
@@ -53,10 +57,14 @@ run_host_tests() {
         test_websetup_assets.c \
         test_memory_keys.c \
         test_telegram_update.c \
+        test_agent.c \
         test_runner.c \
         mock_esp.c \
         mock_llm.c \
         mock_user_tools.c \
+        mock_freertos.c \
+        mock_tools.c \
+        mock_ratelimit.c \
         ../../main/json_util.c \
         ../../main/cron_utils.c \
         ../../main/security.c \
@@ -65,6 +73,7 @@ run_host_tests() {
         ../../main/form_urlencoded.c \
         ../../main/memory_keys.c \
         ../../main/telegram_update.c \
+        ../../main/agent.c \
         $CJSON_LDFLAGS 2>&1 || {
         echo "Note: Failed to compile tests. Install cJSON:"
         echo "  macOS:  brew install cjson"

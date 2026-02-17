@@ -1,0 +1,49 @@
+menu "ZClaw Configuration"
+
+    config ZCLAW_WIFI_SSID
+        string "WiFi SSID (for testing only)"
+        default ""
+        help
+            WiFi network name. Leave empty to use web setup.
+
+    config ZCLAW_WIFI_PASSWORD
+        string "WiFi Password (for testing only)"
+        default ""
+        help
+            WiFi network password. Leave empty to use web setup.
+
+    config ZCLAW_CLAUDE_API_KEY
+        string "LLM API Key (for testing only)"
+        default ""
+        help
+            Your provider API key. Leave empty to use web setup.
+
+    config ZCLAW_STUB_LLM
+        bool "Stub LLM responses (for QEMU testing)"
+        default n
+        help
+            When enabled, returns hardcoded responses instead of calling the LLM API.
+            Useful for testing without WiFi (QEMU emulator).
+
+    config ZCLAW_STUB_TELEGRAM
+        bool "Stub Telegram (for QEMU testing)"
+        default n
+        help
+            When enabled, skips Telegram initialization.
+            Useful for testing without WiFi.
+
+    config ZCLAW_CHANNEL_UART
+        bool "Use UART0 for local channel (QEMU-friendly)"
+        default n
+        help
+            Uses UART0 instead of USB Serial/JTAG for local input/output.
+            Enable this for interactive QEMU use.
+
+    config ZCLAW_EMULATOR_MODE
+        bool "Offline emulator mode (skip WiFi/NTP/Telegram startup)"
+        default n
+        help
+            Starts only local channel + agent loop, without WiFi-dependent startup.
+            Intended for QEMU development workflows.
+
+endmenu

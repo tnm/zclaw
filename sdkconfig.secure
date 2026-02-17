@@ -1,0 +1,18 @@
+# Secure build configuration overlay
+# Use with: idf.py -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.secure" build
+#
+# IMPORTANT: Enabling flash encryption is a ONE-WAY operation!
+# Once enabled, you cannot flash unencrypted firmware via USB.
+# Development mode allows re-flashing with the saved key file.
+
+# Flash encryption (development mode - allows re-flashing with key)
+CONFIG_SECURE_FLASH_ENC_ENABLED=y
+CONFIG_SECURE_FLASH_ENCRYPTION_MODE_DEVELOPMENT=y
+CONFIG_SECURE_BOOT_ALLOW_JTAG=y
+
+# NVS encryption (protects stored credentials)
+CONFIG_NVS_ENCRYPTION=y
+
+# Partition table includes nvs_key partition
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

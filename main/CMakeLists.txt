@@ -1,0 +1,45 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "agent.c"
+        "channel.c"
+        "llm.c"
+        "tools.c"
+        "tools_common.c"
+        "tools_gpio.c"
+        "tools_memory.c"
+        "tools_cron.c"
+        "tools_system.c"
+        "memory.c"
+        "json_util.c"
+        "telegram.c"
+        "cron.c"
+        "websetup.c"
+        "memory_keys.c"
+        "telegram_update.c"
+        "text_buffer.c"
+        "security.c"
+        "cron_utils.c"
+        "ratelimit.c"
+        "ota.c"
+        "boot_guard.c"
+        "form_urlencoded.c"
+        "user_tools.c"
+    INCLUDE_DIRS "."
+    EMBED_TXTFILES
+        "web/setup.html"
+        "web/success.html"
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_http_client
+        esp_http_server
+        esp_netif
+        esp-tls
+        json
+        driver
+        lwip
+        esp_driver_usb_serial_jtag
+        esp_https_ota
+        app_update
+)

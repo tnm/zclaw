@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>zclaw Setup</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect fill='%235b9aff' width='32' height='32' rx='6'/><text x='16' y='23' font-size='20' font-weight='bold' fill='white' text-anchor='middle' font-family='system-ui'>Z</text></svg>">
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #181b20;
+        --line: #2a2e35;
+        --text: #e4e6ea;
+        --muted: #8b909a;
+        --accent: #5b9aff;
+        --accent-hover: #7ab0ff;
+        --input-bg: #12141a;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 24px 16px;
+        min-height: 100vh;
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+
+      .panel {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 24px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+      }
+
+      header {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 22px;
+        font-weight: 600;
+      }
+
+      .subtitle {
+        font-size: 12px;
+        font-variant: small-caps;
+        letter-spacing: 0.5px;
+        color: var(--muted);
+      }
+
+      .section {
+        margin-top: 20px;
+        padding-top: 20px;
+        border-top: 1px solid var(--line);
+      }
+
+      .section:first-of-type {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+      }
+
+      .section-title {
+        margin: 0 0 12px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      label {
+        display: block;
+        margin-top: 14px;
+        margin-bottom: 4px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      label:first-child {
+        margin-top: 0;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--input-bg);
+        color: var(--text);
+        font: inherit;
+        font-size: 14px;
+      }
+
+      select {
+        padding-right: 32px;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b909a' d='M2 4l4 4 4-4'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 5px center;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+      }
+
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+
+      input::placeholder {
+        color: var(--muted);
+      }
+
+      .ssid-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .ssid-row select {
+        flex: 1;
+      }
+
+      .two-col {
+        display: flex;
+        gap: 12px;
+      }
+
+      .two-col > div {
+        flex: 1;
+      }
+
+      .two-col label {
+        margin-top: 0;
+      }
+
+      button {
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: none;
+        font: inherit;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+
+      button.secondary {
+        background: var(--line);
+        color: var(--text);
+      }
+
+      button.secondary:hover {
+        background: #363a42;
+      }
+
+      button.primary {
+        width: 100%;
+        margin-top: 24px;
+        padding: 12px;
+        background: var(--accent);
+        color: #fff;
+        font-weight: 600;
+      }
+
+      button.primary:hover {
+        background: var(--accent-hover);
+      }
+
+      .hint {
+        margin-top: 6px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .hint.error {
+        color: #ff6b6b;
+      }
+
+      .info {
+        margin-top: 16px;
+        padding: 12px;
+        border-radius: 8px;
+        background: var(--input-bg);
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      @media (max-width: 480px) {
+        body {
+          padding: 16px 12px;
+        }
+
+        .panel {
+          padding: 20px 16px;
+        }
+
+        .ssid-row {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <header>
+        <h1>zclaw</h1>
+        <span class="subtitle">configure your device</span>
+      </header>
+
+      <form method="post" action="/save">
+        <div class="section">
+          <div class="section-title">WiFi</div>
+          <label>Network</label>
+          <div class="ssid-row">
+            <select id="ssid-select" aria-label="Scanned WiFi networks">
+              <option value="">Select network...</option>
+            </select>
+            <button id="scan-btn" class="secondary" type="button">Scan</button>
+          </div>
+          <div id="scan-status" class="hint">Scanning...</div>
+          <input
+            id="ssid-input"
+            name="ssid"
+            required
+            placeholder="Or enter SSID manually"
+            autocomplete="off"
+          />
+
+          <label>Password</label>
+          <input name="pass" type="password" placeholder="WiFi password" />
+        </div>
+
+        <div class="section">
+          <div class="section-title">LLM</div>
+          <div class="two-col">
+            <div>
+              <label>Provider</label>
+              <select id="backend-select" name="backend">
+                <option value="anthropic">Anthropic</option>
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+            </div>
+            <div>
+              <label>Model</label>
+              <select id="model-select" name="model"></select>
+            </div>
+          </div>
+
+          <label>API Key</label>
+          <input name="apikey" required placeholder="sk-..." />
+        </div>
+
+        <div class="section">
+          <div class="section-title">Telegram</div>
+          <label>Bot Token</label>
+          <input name="tgtoken" placeholder="123456:ABC..." />
+          <div class="hint">Create a bot with @BotFather</div>
+
+          <label>Chat ID</label>
+          <input name="tgchatid" placeholder="Your numeric chat ID" />
+          <div class="hint">Get yours from @userinfobot</div>
+        </div>
+
+        <button class="primary" type="submit">Save &amp; Connect</button>
+      </form>
+
+      <div class="info">
+        After saving, zclaw will reboot and connect to your WiFi.
+        To reset all settings, hold the BOOT button for 5 seconds during startup.
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const scanButton = document.getElementById("scan-btn");
+        const status = document.getElementById("scan-status");
+        const ssidSelect = document.getElementById("ssid-select");
+        const ssidInput = document.getElementById("ssid-input");
+        const backendSelect = document.getElementById("backend-select");
+        const modelSelect = document.getElementById("model-select");
+
+        const models = {
+          anthropic: [
+            { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5" },
+            { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
+            { value: "claude-haiku-4-5", label: "Claude Haiku 4.5" },
+          ],
+          openai: [
+            { value: "gpt-5.2", label: "GPT-5.2" },
+            { value: "gpt-5.2-pro", label: "GPT-5.2 Pro" },
+            { value: "gpt-5-mini", label: "GPT-5 Mini" },
+          ],
+          openrouter: [
+            { value: "anthropic/claude-4.5-sonnet", label: "Claude 4.5 Sonnet" },
+            { value: "anthropic/claude-4.6-opus", label: "Claude 4.6 Opus" },
+            { value: "openai/gpt-5.2", label: "GPT-5.2" },
+            { value: "google/gemini-3-flash-preview", label: "Gemini 3 Flash" },
+            { value: "google/gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+            { value: "x-ai/grok-4.1-fast", label: "Grok 4.1 Fast" },
+            { value: "deepseek/deepseek-v3.2", label: "DeepSeek V3.2" },
+            { value: "mistralai/devstral-2512", label: "Mistral Devstral" },
+            { value: "qwen/qwen3-coder-480b", label: "Qwen3 Coder 480B" },
+            { value: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B" },
+          ],
+        };
+
+        function updateStatus(msg, isError) {
+          status.textContent = msg;
+          status.className = isError ? "hint error" : "hint";
+        }
+
+        function populateModels() {
+          const backend = backendSelect.value;
+          const options = models[backend] || models.anthropic;
+          modelSelect.innerHTML = "";
+          options.forEach((m) => {
+            const opt = document.createElement("option");
+            opt.value = m.value;
+            opt.textContent = m.label;
+            modelSelect.appendChild(opt);
+          });
+        }
+
+        async function scan() {
+          scanButton.disabled = true;
+          updateStatus("Scanning...", false);
+
+          try {
+            const res = await fetch("/networks", { cache: "no-store" });
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            const ssids = data.ssids || [];
+
+            ssidSelect.innerHTML = '<option value="">Select network...</option>';
+            ssids.forEach((s) => {
+              const opt = document.createElement("option");
+              opt.value = s;
+              opt.textContent = s;
+              ssidSelect.appendChild(opt);
+            });
+
+            if (ssids.length > 0) {
+              updateStatus(`Found ${ssids.length} network${ssids.length > 1 ? "s" : ""}`, false);
+              if (!ssidInput.value) ssidInput.value = ssids[0];
+            } else {
+              updateStatus("No networks found", true);
+            }
+          } catch {
+            updateStatus("Scan failed", true);
+          } finally {
+            scanButton.disabled = false;
+          }
+        }
+
+        ssidSelect.addEventListener("change", () => {
+          if (ssidSelect.value) ssidInput.value = ssidSelect.value;
+        });
+
+        backendSelect.addEventListener("change", populateModels);
+        scanButton.addEventListener("click", scan);
+
+        populateModels();
+        scan();
+      })();
+    </script>
+  </body>
+</html>

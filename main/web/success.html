@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>zclaw</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect fill='%235b9aff' width='32' height='32' rx='6'/><text x='16' y='23' font-size='20' font-weight='bold' fill='white' text-anchor='middle' font-family='system-ui'>Z</text></svg>">
+    <style>
+      :root {
+        --bg: #090d0b;
+        --panel: #101813;
+        --line: #264438;
+        --text: #d7e6dc;
+        --muted: #8ca89a;
+        --accent: #71efb5;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 20px 12px;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font: 14px/1.4 "JetBrains Mono", "SFMono-Regular", Menlo, Consolas,
+          monospace;
+        color: var(--text);
+        background:
+          radial-gradient(900px 450px at 12% 0%, rgba(73, 174, 129, 0.14), transparent 60%),
+          radial-gradient(700px 350px at 92% 100%, rgba(43, 108, 82, 0.18), transparent 60%),
+          repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.03) 0 1px,
+            transparent 1px 24px
+          ),
+          var(--bg);
+      }
+
+      .panel {
+        width: 100%;
+        max-width: 430px;
+        text-align: center;
+        padding: 20px 14px;
+        border: 1px solid var(--line);
+        background: linear-gradient(
+          180deg,
+          rgba(18, 29, 23, 0.92),
+          rgba(12, 19, 15, 0.94)
+        );
+        box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+      }
+
+      h1 {
+        margin: 8px 0 10px;
+        color: var(--accent);
+        letter-spacing: 0.04em;
+      }
+
+      .check {
+        font-size: 44px;
+        color: var(--accent);
+      }
+
+      p {
+        margin: 6px 0;
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <div class="check">&#10003;</div>
+      <h1>Configuration Saved</h1>
+      <p>zclaw is restarting and will connect to your WiFi network.</p>
+      <p>Check Telegram for a message from your bot.</p>
+    </div>
+  </body>
+</html>

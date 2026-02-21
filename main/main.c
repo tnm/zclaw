@@ -17,11 +17,16 @@
 #include "freertos/event_groups.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
+#include "esp_netif.h"
 #include "esp_log.h"
 #include "esp_err.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
+#if CONFIG_ZCLAW_BLE_PROVISIONING
+#include "wifi_provisioning/manager.h"
+#include "wifi_provisioning/scheme_ble.h"
+#endif
 #include <string.h>
 
 static const char *TAG = "main";
@@ -34,6 +39,12 @@ static EventGroupHandle_t s_wifi_event_group;
 static int s_retry_num = 0;
 static bool s_safe_mode = false;
 static uint8_t s_last_disconnect_reason = 0;
+static bool s_in_ble_provisioning = false;
+static bool s_wifi_handlers_registered = false;
+static bool s_wifi_inited = false;
+static bool s_sta_netif_created = false;
+static esp_event_handler_instance_t s_instance_any_id;
+static esp_event_handler_instance_t s_instance_got_ip;
 
 #ifndef WIFI_REASON_BEACON_TIMEOUT
 #define WIFI_REASON_BEACON_TIMEOUT 200
@@ -231,6 +242,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
             ESP_LOGW(TAG, "WiFi hint: %s", hint);
         }
 
+        if (s_in_ble_provisioning) {
+            ESP_LOGW(TAG, "Waiting for new credentials via BLE provisioning");
+            return;
+        }
+
         if (s_retry_num < WIFI_MAX_RETRY) {
             esp_wifi_connect();
             s_retry_num++;
@@ -247,6 +263,64 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
+}
+
+static esp_err_t wifi_stack_init(void)
+{
+    esp_err_t err;
+
+    if (!s_wifi_event_group) {
+        s_wifi_event_group = xEventGroupCreate();
+        if (!s_wifi_event_group) {
+            return ESP_ERR_NO_MEM;
+        }
+    }
+
+    err = esp_netif_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        return err;
+    }
+
+    err = esp_event_loop_create_default();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        return err;
+    }
+
+    if (!s_sta_netif_created) {
+        if (esp_netif_get_handle_from_ifkey("WIFI_STA_DEF") == NULL) {
+            if (esp_netif_create_default_wifi_sta() == NULL) {
+                return ESP_FAIL;
+            }
+        }
+        s_sta_netif_created = true;
+    }
+
+    if (!s_wifi_inited) {
+        wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+        err = esp_wifi_init(&cfg);
+        if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+            return err;
+        }
+        s_wifi_inited = true;
+    }
+
+    if (!s_wifi_handlers_registered) {
+        err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
+                                                  &wifi_event_handler, NULL, &s_instance_any_id);
+        if (err != ESP_OK) {
+            return err;
+        }
+
+        err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
+                                                  &wifi_event_handler, NULL, &s_instance_got_ip);
+        if (err != ESP_OK) {
+            esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, s_instance_any_id);
+            return err;
+        }
+        s_wifi_handlers_registered = true;
+    }
+
+    return ESP_OK;
 }
 
 // Check factory reset button
@@ -292,6 +366,7 @@ static bool device_is_configured(void)
 #endif
 }
 
+#if !CONFIG_ZCLAW_BLE_PROVISIONING
 static void print_provisioning_help(void)
 {
     ESP_LOGE(TAG, "");
@@ -303,6 +378,7 @@ static void print_provisioning_help(void)
     ESP_LOGE(TAG, "Then restart the board.");
     ESP_LOGE(TAG, "");
 }
+#endif
 
 // Connect to WiFi using stored credentials
 static bool wifi_connect_sta(void)
@@ -334,21 +410,13 @@ static bool wifi_connect_sta(void)
     ESP_LOGI(TAG, "Loaded WiFi credentials: ssid='%s', password_len=%u",
              ssid, (unsigned)strlen(pass));
 
-    s_wifi_event_group = xEventGroupCreate();
-
-    ESP_ERROR_CHECK(esp_netif_init());
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    esp_netif_create_default_wifi_sta();
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    esp_event_handler_instance_t instance_any_id;
-    esp_event_handler_instance_t instance_got_ip;
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID,
-                                                         &wifi_event_handler, NULL, &instance_any_id));
-    ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP,
-                                                         &wifi_event_handler, NULL, &instance_got_ip));
+    esp_err_t init_err = wifi_stack_init();
+    if (init_err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi stack init failed: %s", esp_err_to_name(init_err));
+        return false;
+    }
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+    s_retry_num = 0;
 
     wifi_config_t wifi_config = {0};
     strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
@@ -370,6 +438,164 @@ static bool wifi_connect_sta(void)
 
     return (bits & WIFI_CONNECTED_BIT) != 0;
 }
+
+#if CONFIG_ZCLAW_BLE_PROVISIONING
+static const char *ble_prov_fail_reason_name(wifi_prov_sta_fail_reason_t reason)
+{
+    switch (reason) {
+        case WIFI_PROV_STA_AUTH_ERROR: return "AUTH_ERROR";
+        case WIFI_PROV_STA_AP_NOT_FOUND: return "AP_NOT_FOUND";
+        default: return "UNKNOWN";
+    }
+}
+
+static void ble_prov_event_handler(void *arg, esp_event_base_t event_base,
+                                   int32_t event_id, void *event_data)
+{
+    (void)arg;
+    if (event_base != WIFI_PROV_EVENT) {
+        return;
+    }
+
+    switch (event_id) {
+        case WIFI_PROV_START:
+            ESP_LOGI(TAG, "BLE provisioning started");
+            break;
+        case WIFI_PROV_CRED_RECV: {
+            const wifi_sta_config_t *sta_cfg = (const wifi_sta_config_t *)event_data;
+            char ssid[33] = {0};
+            if (sta_cfg) {
+                memcpy(ssid, sta_cfg->ssid, sizeof(sta_cfg->ssid));
+            }
+            ESP_LOGI(TAG, "BLE provisioning received credentials for ssid='%s'", ssid);
+            break;
+        }
+        case WIFI_PROV_CRED_FAIL: {
+            const wifi_prov_sta_fail_reason_t *reason = (const wifi_prov_sta_fail_reason_t *)event_data;
+            wifi_prov_sta_fail_reason_t fail = reason ? *reason : WIFI_PROV_STA_AP_NOT_FOUND;
+            ESP_LOGW(TAG, "BLE provisioning connect failed: %s", ble_prov_fail_reason_name(fail));
+            break;
+        }
+        case WIFI_PROV_CRED_SUCCESS:
+            ESP_LOGI(TAG, "BLE provisioning WiFi credentials accepted");
+            break;
+        case WIFI_PROV_END:
+            ESP_LOGI(TAG, "BLE provisioning service stopped");
+            break;
+        default:
+            break;
+    }
+}
+
+static void build_ble_service_name(char *out, size_t out_len)
+{
+    uint8_t mac[6] = {0};
+    if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK) {
+        snprintf(out, out_len, "zclaw-%02X%02X%02X", mac[3], mac[4], mac[5]);
+        return;
+    }
+    snprintf(out, out_len, "zclaw");
+}
+
+static bool wifi_provision_over_ble(void)
+{
+    esp_err_t err = wifi_stack_init();
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "WiFi stack init failed for BLE provisioning: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    xEventGroupClearBits(s_wifi_event_group, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT);
+    s_retry_num = 0;
+
+    wifi_prov_mgr_config_t prov_cfg = {
+        .scheme = wifi_prov_scheme_ble,
+        .scheme_event_handler = WIFI_PROV_SCHEME_BLE_EVENT_HANDLER_FREE_BLE,
+        .app_event_handler = WIFI_PROV_EVENT_HANDLER_NONE,
+    };
+
+    err = wifi_prov_mgr_init(prov_cfg);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "wifi_prov_mgr_init failed: %s", esp_err_to_name(err));
+        return false;
+    }
+
+    esp_event_handler_instance_t prov_event_instance;
+    err = esp_event_handler_instance_register(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID,
+                                              &ble_prov_event_handler, NULL, &prov_event_instance);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to register BLE provisioning event handler: %s", esp_err_to_name(err));
+        wifi_prov_mgr_deinit();
+        return false;
+    }
+
+    bool provisioned = false;
+    err = wifi_prov_mgr_is_provisioned(&provisioned);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "wifi_prov_mgr_is_provisioned failed: %s", esp_err_to_name(err));
+        esp_event_handler_instance_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, prov_event_instance);
+        wifi_prov_mgr_deinit();
+        return false;
+    }
+
+    if (provisioned) {
+        ESP_LOGI(TAG, "NVS already has WiFi credentials; skipping BLE provisioning");
+        esp_event_handler_instance_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, prov_event_instance);
+        wifi_prov_mgr_deinit();
+        return wifi_connect_sta();
+    }
+
+    char service_name[20] = {0};
+    build_ble_service_name(service_name, sizeof(service_name));
+
+    wifi_prov_security_t security = WIFI_PROV_SECURITY_0;
+    const void *security_params = NULL;
+    const char *pop_value = "";
+
+#if defined(CONFIG_ESP_PROTOCOMM_SUPPORT_SECURITY_VERSION_1) && defined(CONFIG_ZCLAW_BLE_PROV_POP)
+    if (CONFIG_ZCLAW_BLE_PROV_POP[0] != '\0') {
+        security = WIFI_PROV_SECURITY_1;
+        security_params = CONFIG_ZCLAW_BLE_PROV_POP;
+        pop_value = CONFIG_ZCLAW_BLE_PROV_POP;
+    }
+#endif
+
+    ESP_LOGW(TAG, "No WiFi credentials found in NVS. Starting BLE provisioning...");
+    ESP_LOGI(TAG, "BLE service name: %s", service_name);
+    ESP_LOGI(TAG, "Use the Espressif 'ESP BLE Provisioning' app");
+    ESP_LOGI(TAG, "QR payload: {\"ver\":\"v1\",\"name\":\"%s\",\"transport\":\"ble\",\"pop\":\"%s\"}",
+             service_name, pop_value);
+
+    s_in_ble_provisioning = true;
+    err = wifi_prov_mgr_start_provisioning(security, security_params, service_name, NULL);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "wifi_prov_mgr_start_provisioning failed: %s", esp_err_to_name(err));
+        s_in_ble_provisioning = false;
+        esp_event_handler_instance_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, prov_event_instance);
+        wifi_prov_mgr_deinit();
+        return false;
+    }
+
+    EventBits_t bits = xEventGroupWaitBits(s_wifi_event_group,
+                                           WIFI_CONNECTED_BIT,
+                                           pdTRUE, pdFALSE, portMAX_DELAY);
+    bool connected = (bits & WIFI_CONNECTED_BIT) != 0;
+    s_in_ble_provisioning = false;
+
+    wifi_prov_mgr_stop_provisioning();
+    wifi_prov_mgr_wait();
+    esp_event_handler_instance_unregister(WIFI_PROV_EVENT, ESP_EVENT_ANY_ID, prov_event_instance);
+    wifi_prov_mgr_deinit();
+
+    if (!connected) {
+        ESP_LOGE(TAG, "BLE provisioning ended without WiFi connection");
+        return false;
+    }
+
+    ESP_LOGI(TAG, "BLE provisioning complete, WiFi connected");
+    return true;
+}
+#endif
 
 void app_main(void)
 {
@@ -443,29 +669,39 @@ void app_main(void)
     }
 #else
 
-    // 4. Check if configured or in safe mode
-    if (!device_is_configured() || s_safe_mode) {
-        if (s_safe_mode) {
-            ESP_LOGE(TAG, "");
-            ESP_LOGE(TAG, "========================================");
-            ESP_LOGE(TAG, "  SAFE MODE - Too many boot failures");
-            ESP_LOGE(TAG, "  Hold BOOT button for factory reset");
-            ESP_LOGE(TAG, "========================================");
-            ESP_LOGE(TAG, "");
-            ESP_LOGE(TAG, "Recovery options:");
-            ESP_LOGE(TAG, "  1) Hold BOOT for factory reset");
-            ESP_LOGE(TAG, "  2) Reflash firmware and reprovision");
-            ESP_LOGE(TAG, "");
-        } else {
-            print_provisioning_help();
-        }
+    // 4. Safe mode blocks normal startup
+    if (s_safe_mode) {
+        ESP_LOGE(TAG, "");
+        ESP_LOGE(TAG, "========================================");
+        ESP_LOGE(TAG, "  SAFE MODE - Too many boot failures");
+        ESP_LOGE(TAG, "  Hold BOOT button for factory reset");
+        ESP_LOGE(TAG, "========================================");
+        ESP_LOGE(TAG, "");
+        ESP_LOGE(TAG, "Recovery options:");
+        ESP_LOGE(TAG, "  1) Hold BOOT for factory reset");
+        ESP_LOGE(TAG, "  2) Reflash firmware and reprovision");
+        ESP_LOGE(TAG, "");
         while (1) {
             vTaskDelay(pdMS_TO_TICKS(5000));
         }
     }
 
-    // 5. Connect to WiFi
-    if (!wifi_connect_sta()) {
+    // 5. Connect to WiFi (or provision first if needed)
+    bool wifi_ready = false;
+    if (device_is_configured()) {
+        wifi_ready = wifi_connect_sta();
+    } else {
+#if CONFIG_ZCLAW_BLE_PROVISIONING
+        wifi_ready = wifi_provision_over_ble();
+#else
+        print_provisioning_help();
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(5000));
+        }
+#endif
+    }
+
+    if (!wifi_ready) {
         ESP_LOGE(TAG, "WiFi failed, restarting...");
         vTaskDelay(pdMS_TO_TICKS(3000));
         esp_restart();

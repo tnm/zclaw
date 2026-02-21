@@ -36,4 +36,5 @@ idf_component_register(
         lwip
         esp_driver_usb_serial_jtag
         app_update
+        wifi_provisioning
 )

@@ -7,11 +7,20 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
+ZCLAW_RELEASE_VERSION="dev"
 ESP_IDF_VERSION="v5.4"
 ESP_IDF_DIR="$HOME/esp/esp-idf"
 ESP_IDF_CHIPS="esp32c3,esp32s3"
 PREFS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zclaw"
 PREFS_FILE="$PREFS_DIR/install.env"
+
+if [ -f "$VERSION_FILE" ]; then
+    ZCLAW_RELEASE_VERSION="$(sed -n '1p' "$VERSION_FILE" | tr -d '\r')"
+    if [ -z "$ZCLAW_RELEASE_VERSION" ]; then
+        ZCLAW_RELEASE_VERSION="dev"
+    fi
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -67,6 +76,7 @@ EOF
     echo -e "${NC}"
     echo -e "${DIM}─────────────────────────────────----------───────────${NC}"
     echo -e "${MAGENTA}${BOLD}       The 5-dollar assistant in 888kb${NC}"
+    echo -e "${DIM}                  zclaw release v${ZCLAW_RELEASE_VERSION}${NC}"
     echo -e "${DIM}───────────--------─────────────────────--────────────${NC}"
     echo ""
 }
@@ -95,6 +105,7 @@ usage() {
 Usage: ./install.sh [options]
 
 Options:
+  -V, --version                         Print zclaw release version and exit
   -y, --yes                            Assume "yes" for prompts (explicit --no-* still wins)
   --build / --no-build                  Build firmware now
   --flash / --no-flash                  Flash firmware after successful build
@@ -312,6 +323,10 @@ parse_args() {
 
     while [ $# -gt 0 ]; do
         case "$1" in
+            -V|--version)
+                echo "zclaw release v$ZCLAW_RELEASE_VERSION"
+                exit 0
+                ;;
             --build) FORCE_BUILD="y" ;;
             --no-build) FORCE_BUILD="n" ;;
             --flash) FORCE_FLASH="y" ;;

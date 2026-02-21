@@ -39,3 +39,11 @@ idf_component_register(
         esp_driver_usb_serial_jtag
         app_update
 )
+
+set(ZCLAW_VERSION_FILE "${CMAKE_SOURCE_DIR}/VERSION")
+set(ZCLAW_RELEASE_VERSION "dev")
+if(EXISTS "${ZCLAW_VERSION_FILE}")
+    file(READ "${ZCLAW_VERSION_FILE}" ZCLAW_RELEASE_VERSION)
+    string(STRIP "${ZCLAW_RELEASE_VERSION}" ZCLAW_RELEASE_VERSION)
+endif()
+target_compile_definitions(${COMPONENT_LIB} PRIVATE ZCLAW_VERSION="${ZCLAW_RELEASE_VERSION}")

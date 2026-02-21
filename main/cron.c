@@ -26,6 +26,13 @@ static cron_entry_t s_entries[CRON_MAX_ENTRIES];
 static bool s_time_synced = false;
 static SemaphoreHandle_t s_entries_mutex = NULL;
 static char s_timezone[TIMEZONE_MAX_LEN] = DEFAULT_TIMEZONE_POSIX;
+typedef struct {
+    uint8_t id;
+    char action[CRON_MAX_ACTION_LEN];
+} pending_cron_fire_t;
+// Keep pending actions in static storage; allocating this on cron task stack
+// can exceed CRON_TASK_STACK_SIZE on smaller targets (e.g. ESP32-C6).
+static pending_cron_fire_t s_pending_fires[CRON_MAX_ENTRIES];
 
 static bool entries_lock(TickType_t timeout_ticks)
 {
@@ -454,17 +461,11 @@ esp_err_t cron_delete(uint8_t id)
 // Check and fire due entries
 static void check_entries(void)
 {
-    typedef struct {
-        uint8_t id;
-        char action[CRON_MAX_ACTION_LEN];
-    } pending_cron_fire_t;
-
     time_t now;
     struct tm timeinfo;
     time(&now);
     localtime_r(&now, &timeinfo);
 
-    pending_cron_fire_t pending[CRON_MAX_ENTRIES];
     int pending_count = 0;
 
     if (!entries_lock(pdMS_TO_TICKS(1000))) {
@@ -501,9 +502,9 @@ static void check_entries(void)
             }
 
             if (pending_count < CRON_MAX_ENTRIES) {
-                pending[pending_count].id = entry->id;
-                strncpy(pending[pending_count].action, entry->action, sizeof(pending[pending_count].action) - 1);
-                pending[pending_count].action[sizeof(pending[pending_count].action) - 1] = '\0';
+                s_pending_fires[pending_count].id = entry->id;
+                strncpy(s_pending_fires[pending_count].action, entry->action, sizeof(s_pending_fires[pending_count].action) - 1);
+                s_pending_fires[pending_count].action[sizeof(s_pending_fires[pending_count].action) - 1] = '\0';
                 pending_count++;
             }
         }
@@ -512,11 +513,11 @@ static void check_entries(void)
     entries_unlock();
 
     for (int i = 0; i < pending_count; i++) {
-        ESP_LOGI(TAG, "Firing cron %d: %s", pending[i].id, pending[i].action);
+        ESP_LOGI(TAG, "Firing cron %d: %s", s_pending_fires[i].id, s_pending_fires[i].action);
 
         // Push action to agent queue
         channel_msg_t msg;
-        snprintf(msg.text, sizeof(msg.text), "[CRON %d] %s", pending[i].id, pending[i].action);
+        snprintf(msg.text, sizeof(msg.text), "[CRON %d] %s", s_pending_fires[i].id, s_pending_fires[i].action);
 
         if (xQueueSend(s_agent_queue, &msg, pdMS_TO_TICKS(100)) != pdTRUE) {
             ESP_LOGW(TAG, "Agent queue full, cron action dropped");

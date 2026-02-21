@@ -1,0 +1,27 @@
+name: Firmware Stack Guard
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  stack-guard:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install jq
+        run: |
+          apt-get update
+          apt-get install -y jq
+
+      - name: Build firmware
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py build
+
+      - name: Guard cron stack usage
+        run: ./scripts/check-stack-usage.sh --build-dir build --max-bytes 1024

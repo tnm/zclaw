@@ -22,23 +22,23 @@
 }
 
 :root[data-theme="dark"] {
-  --paper: #2b2218;
-  --paper-deep: #241b14;
-  --ink: #f1e3ca;
-  --ink-soft: #d5c2a0;
-  --accent: #d48b78;
-  --accent-soft: #c07a67;
-  --accent-wash: rgba(212, 139, 120, 0.18);
-  --line: #5d4937;
-  --shadow: rgba(0, 0, 0, 0.34);
-  --bg-highlight: rgba(255, 238, 210, 0.06);
-  --bg-accent: rgba(212, 139, 120, 0.12);
-  --bg-grain: rgba(255, 245, 228, 0.04);
-  --sidebar-sheen: rgba(255, 242, 220, 0.05);
-  --panel-bg: #35291f;
-  --code-bg: #3a2d22;
-  --surface-soft: rgba(58, 46, 34, 0.58);
-  --surface-mid: rgba(51, 40, 30, 0.64);
+  --paper: #2c241c;
+  --paper-deep: #251e17;
+  --ink: #e9dec9;
+  --ink-soft: #c8bca8;
+  --accent: #b08c67;
+  --accent-soft: #9f7d5c;
+  --accent-wash: rgba(176, 140, 103, 0.16);
+  --line: #5a4b3c;
+  --shadow: rgba(0, 0, 0, 0.3);
+  --bg-highlight: rgba(244, 230, 210, 0.05);
+  --bg-accent: rgba(146, 118, 90, 0.1);
+  --bg-grain: rgba(255, 244, 228, 0.03);
+  --sidebar-sheen: rgba(255, 241, 216, 0.04);
+  --panel-bg: #32281f;
+  --code-bg: #372d24;
+  --surface-soft: rgba(56, 45, 35, 0.56);
+  --surface-mid: rgba(50, 40, 31, 0.62);
   --overlay: rgba(8, 6, 4, 0.52);
 }
 
@@ -253,19 +253,57 @@ body {
   gap: 0.42rem;
 }
 
+.theme-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.26rem;
+  white-space: nowrap;
+}
+
+.theme-switcher-side {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.theme-choice {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel-bg);
+  color: var(--ink-soft);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1;
+  min-height: 2.05rem;
+  padding: 0.22rem 0.44rem;
+  border-radius: 3px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-choice:hover {
+  border-color: var(--accent-soft);
+  background: var(--accent-wash);
+  color: var(--ink);
+}
+
+.theme-choice:focus-visible {
+  outline: 1px solid var(--accent-soft);
+  outline-offset: 1px;
+}
+
+.theme-choice.is-active {
+  background: var(--accent-wash);
+  border-color: var(--accent-soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .menu-toggle {
   width: 2.35rem;
   padding: 0;
   font-size: 1.2rem;
-  line-height: 1;
-}
-
-.utility-btn .btn-icon {
-  font-size: 1.02rem;
-  line-height: 1;
-}
-
-.utility-btn .btn-label {
   line-height: 1;
 }
 
@@ -285,6 +323,26 @@ body {
 .sidebar-utilities .utility-btn {
   width: 100%;
   text-align: left;
+}
+
+.utility-link {
+  text-decoration: none;
+}
+
+.sidebar-utilities .readme-link {
+  font-size: 0.73rem;
+  padding: 0.3rem 0.45rem;
+  white-space: nowrap;
+}
+
+.sidebar-utilities .theme-switcher {
+  width: 100%;
+}
+
+.sidebar-utilities .theme-choice {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
 }
 
 .kicker {
@@ -415,6 +473,8 @@ body {
 :root[data-theme="kr"] pre,
 :root[data-theme="kr"] .code,
 :root[data-theme="kr"] .menu-toggle,
+:root[data-theme="kr"] .theme-switcher,
+:root[data-theme="kr"] .theme-choice,
 :root[data-theme="kr"] .utility-btn,
 :root[data-theme="kr"] .figure img {
   border-radius: 0;
@@ -485,6 +545,12 @@ pre {
   margin: 0.8rem 0;
 }
 
+.figure-note {
+  margin: 0.8rem 0 0;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+
 .figure {
   margin: 0;
 }
@@ -513,7 +579,7 @@ pre {
   justify-content: center;
   padding: 1rem;
   background: var(--overlay);
-  z-index: 40;
+  z-index: 60;
 }
 
 .shortcut-panel.is-open {
@@ -584,7 +650,7 @@ kbd {
     width: min(82vw, 310px);
     transform: translateX(-103%);
     transition: transform 220ms ease;
-    z-index: 25;
+    z-index: 42;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
   }
 
@@ -597,7 +663,7 @@ kbd {
     position: fixed;
     inset: 0;
     background: var(--overlay);
-    z-index: 20;
+    z-index: 40;
   }
 
   .content-wrap {
@@ -609,7 +675,7 @@ kbd {
     display: flex;
     position: sticky;
     top: 0.5rem;
-    z-index: 31;
+    z-index: 30;
     padding: 0.45rem 0.5rem;
     margin-bottom: 0.9rem;
     border: 1px solid var(--line);
@@ -634,12 +700,19 @@ kbd {
     padding: 0;
   }
 
-  .topbar-actions .utility-btn .btn-label {
-    display: none;
+  .topbar-actions .theme-switcher {
+    gap: 0.16rem;
+    min-height: 2.35rem;
+    align-items: stretch;
   }
 
-  .topbar-actions .utility-btn .btn-icon {
-    font-size: 1.05rem;
+  .topbar-actions .theme-choice {
+    font-size: 0.68rem;
+    min-height: 2.35rem;
+    height: 2.35rem;
+    width: 2.35rem;
+    min-width: 2.35rem;
+    padding: 0;
   }
 
   .topbar-actions .keys-toggle {

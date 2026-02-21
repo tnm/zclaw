@@ -64,6 +64,7 @@ Important setup notes:
 
 Tested targets: **ESP32-C3**, **ESP32-S3**, and **ESP32-C6**.
 Other ESP32 variants should work fine (some may require manual ESP-IDF target setup).
+Tests reports are very welcome!
 
 Recommended starter board: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html)
 
@@ -76,8 +77,24 @@ Recommended starter board: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/See
 - `./scripts/monitor.sh` - Serial monitor
 - `./scripts/emulate.sh` - Run QEMU profile
 - `./scripts/web-relay.sh` - Hosted relay + mobile chat UI
+- `./scripts/benchmark.sh` - Benchmark relay/serial latency
 - `./scripts/docs-site.sh` - Serve docs site
 - `./scripts/test.sh` - Run host/device test flows
+
+## Latency Benchmarking
+
+Relay path benchmark (includes web relay processing + device round trip):
+
+```bash
+./scripts/benchmark.sh --mode relay --count 20 --message "ping"
+```
+
+Direct serial benchmark (host round trip + first response time). If firmware logs
+`METRIC request ...` lines, the report also includes device-side timing:
+
+```bash
+./scripts/benchmark.sh --mode serial --serial-port /dev/cu.usbmodem1101 --count 20 --message "ping"
+```
 
 ## License
 

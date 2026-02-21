@@ -396,6 +396,8 @@ zclaw/
 │   ├── release-port.sh # Release busy serial port holders
 │   ├── emulate.sh      # QEMU emulator
 │   ├── exit-emulator.sh # Stop QEMU emulator
+│   ├── benchmark.sh    # Latency benchmark launcher
+│   ├── benchmark_latency.py # Relay/serial benchmark runner
 │   ├── docs-site.sh    # Serve custom docs site locally
 │   ├── web-relay.sh    # Web relay launcher with serial-port guards
 │   ├── web_relay.py    # Hosted web relay + mobile chat UI
@@ -451,6 +453,19 @@ If the console is stuck, run `./scripts/exit-emulator.sh` from another terminal.
 
 This repo includes `sdkconfig.test` by default for dedicated device-test builds
 with stubbed LLM/Telegram dependencies.
+
+### Latency Benchmarking
+
+```bash
+# Relay benchmark (HTTP + relay + device response path)
+./scripts/benchmark.sh --mode relay --count 20 --message "ping"
+
+# Direct serial benchmark
+./scripts/benchmark.sh --mode serial --serial-port /dev/cu.usbmodem1101 --count 20 --message "ping"
+```
+
+Serial mode reports host round-trip and first-response latency. If firmware logs
+`METRIC request ...` lines, the benchmark also reports device-side total/LLM/tool timings.
 
 ## Memory Usage
 

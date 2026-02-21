@@ -42,6 +42,29 @@
   --overlay: rgba(8, 6, 4, 0.52);
 }
 
+:root[data-theme="kr"] {
+  --paper: #fefefc;
+  --paper-deep: #ffffff;
+  --ink: #121212;
+  --ink-soft: #2a2a2a;
+  --accent: #9a3324;
+  --accent-soft: #b7503a;
+  --accent-wash: rgba(154, 51, 36, 0.07);
+  --line: #c8c8c8;
+  --shadow: rgba(0, 0, 0, 0.08);
+  --bg-highlight: rgba(255, 255, 255, 0);
+  --bg-accent: rgba(255, 255, 255, 0);
+  --bg-grain: rgba(0, 0, 0, 0.01);
+  --sidebar-sheen: rgba(255, 255, 255, 0);
+  --panel-bg: #ffffff;
+  --code-bg: #f6f6f4;
+  --surface-soft: #ffffff;
+  --surface-mid: #ffffff;
+  --overlay: rgba(12, 12, 12, 0.24);
+  --mono: "Courier New", Courier, monospace;
+  --serif: "Times New Roman", Times, serif;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -70,6 +93,10 @@ body {
     var(--paper);
 }
 
+:root[data-theme="kr"] body {
+  background: var(--paper);
+}
+
 .page {
   width: 100%;
   margin: 0;
@@ -77,6 +104,10 @@ body {
   display: grid;
   grid-template-columns: 292px 1fr;
   animation: enter 520ms ease both;
+}
+
+:root[data-theme="kr"] .page {
+  animation: none;
 }
 
 @keyframes enter {
@@ -99,6 +130,10 @@ body {
   background:
     linear-gradient(160deg, var(--sidebar-sheen), transparent 55%),
     var(--paper-deep);
+}
+
+:root[data-theme="kr"] .sidebar {
+  background: var(--paper-deep);
 }
 
 .brand {
@@ -141,6 +176,12 @@ body {
 .chapter-list li:nth-child(3) { animation-delay: 210ms; }
 .chapter-list li:nth-child(4) { animation-delay: 270ms; }
 .chapter-list li:nth-child(5) { animation-delay: 330ms; }
+
+:root[data-theme="kr"] .chapter-list li {
+  opacity: 1;
+  transform: none;
+  animation: none;
+}
 
 @keyframes chapterIn {
   to {
@@ -365,6 +406,28 @@ body {
   transform: translateY(-2px);
   border-color: var(--accent-soft);
   box-shadow: 0 10px 26px var(--shadow);
+}
+
+:root[data-theme="kr"] .paper-card,
+:root[data-theme="kr"] .chapter-link,
+:root[data-theme="kr"] .topbar,
+:root[data-theme="kr"] .shortcut-card,
+:root[data-theme="kr"] pre,
+:root[data-theme="kr"] .code,
+:root[data-theme="kr"] .menu-toggle,
+:root[data-theme="kr"] .utility-btn,
+:root[data-theme="kr"] .figure img {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:root[data-theme="kr"] .kicker {
+  color: var(--ink-soft);
+}
+
+:root[data-theme="kr"] .page-title,
+:root[data-theme="kr"] .section h2 {
+  letter-spacing: 0;
 }
 
 .chapter-link strong {

@@ -1,5 +1,6 @@
 (function () {
   var THEME_STORAGE_KEY = 'zclaw_docs_theme';
+  var THEME_ORDER = ['light', 'dark', 'kr'];
   var page = document.querySelector('.page');
   var sidebar = document.querySelector('.sidebar');
   var topbar = document.querySelector('.topbar');
@@ -69,30 +70,48 @@
     }
   }
 
+  function normalizeTheme(theme) {
+    return THEME_ORDER.indexOf(theme) >= 0 ? theme : 'light';
+  }
+
   function currentTheme() {
-    return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+    return normalizeTheme(document.documentElement.getAttribute('data-theme'));
+  }
+
+  function nextTheme(theme) {
+    var normalized = normalizeTheme(theme);
+    var index = THEME_ORDER.indexOf(normalized);
+    return THEME_ORDER[(index + 1) % THEME_ORDER.length];
+  }
+
+  function themeFace(theme) {
+    if (theme === 'dark') {
+      return { icon: '☾', label: 'Night' };
+    }
+    if (theme === 'kr') {
+      return { icon: 'K', label: 'K&R' };
+    }
+    return { icon: '☀', label: 'Day' };
   }
 
   function updateThemeButtons(theme) {
+    var next = nextTheme(theme);
+    var face = themeFace(next);
     themeButtons.forEach(function (button) {
-      if (theme === 'dark') {
-        setButtonFace(button, '☀', 'Day');
-      } else {
-        setButtonFace(button, '☾', 'Night');
-      }
-      button.setAttribute('title', 'Toggle dark mode (D)');
-      button.setAttribute('aria-label', 'Toggle dark mode');
+      setButtonFace(button, face.icon, face.label);
+      button.setAttribute('title', 'Cycle theme mode (D). Next: ' + face.label);
+      button.setAttribute('aria-label', 'Cycle theme mode');
     });
   }
 
   function applyTheme(theme) {
-    var normalized = theme === 'dark' ? 'dark' : 'light';
+    var normalized = normalizeTheme(theme);
     document.documentElement.setAttribute('data-theme', normalized);
     updateThemeButtons(normalized);
   }
 
   function toggleTheme() {
-    var next = currentTheme() === 'dark' ? 'light' : 'dark';
+    var next = nextTheme(currentTheme());
     applyTheme(next);
     saveTheme(next);
   }
@@ -210,7 +229,7 @@
       '      <tr><th><kbd>h</kbd> / <kbd>l</kbd></th><td>Previous or next chapter</td></tr>' +
       '      <tr><th><kbd>j</kbd> / <kbd>k</kbd></th><td>Scroll down or up</td></tr>' +
       '      <tr><th><kbd>gg</kbd> / <kbd>G</kbd></th><td>Top or bottom of page</td></tr>' +
-      '      <tr><th><kbd>D</kbd></th><td>Toggle dark mode</td></tr>' +
+      '      <tr><th><kbd>D</kbd></th><td>Cycle Day, Night, and K&amp;R modes</td></tr>' +
       '      <tr><th><kbd>M</kbd></th><td>Toggle sidebar menu (mobile)</td></tr>' +
       '      <tr><th><kbd>?</kbd></th><td>Open/close this panel</td></tr>' +
       '      <tr><th><kbd>Esc</kbd></th><td>Close panel and mobile menu</td></tr>' +

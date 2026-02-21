@@ -36,7 +36,7 @@
 
         <header>
           <p class="kicker">chapter 0</p>
-          <h1 class="page-title">The 888 KB Assistant</h1>
+          <h1 class="page-title">The 888 KiB Assistant</h1>
           <p class="deck">zclaw is an ESP32-resident AI agent written in C. It runs as a practical assistant over Telegram or host relay, with scheduling, GPIO control, memory, and a tight firmware budget.</p>
         </header>
 
@@ -61,8 +61,8 @@ Agent: Created schedule #7: once in 20 min -> check the garage sensor</pre>
         </section>
 
         <section class="section">
-          <h2>What "888 KB" Means</h2>
-          <p>The <strong>888 KB</strong> target is an all-in firmware cap, not just zclaw application logic. It includes app code plus ESP-IDF/FreeRTOS runtime, Wi-Fi/networking, TLS/crypto, and cert bundle overhead.</p>
+          <h2>What "888 KiB" Means</h2>
+          <p>The <strong>888 KiB</strong> target is an all-in firmware cap, not just zclaw application logic. It includes app code plus ESP-IDF/FreeRTOS runtime, Wi-Fi/networking, TLS/crypto, and cert bundle overhead.</p>
           <p>Current default <code>esp32s3</code> build (<code>idf.py -B build size-components</code>, flash totals):</p>
           <table>
             <thead>
@@ -76,7 +76,7 @@ Agent: Created schedule #7: once in 20 min -> check the garage sensor</pre>
               <tr><td>Other ESP-IDF/runtime/drivers/libc</td><td>237,889 bytes (~232.3 KiB)</td><td>~27.7%</td></tr>
             </tbody>
           </table>
-          <p class="inline-note"><code>zclaw.bin</code> from the same build is <strong>865,888 bytes</strong> (~845.6 KiB), under the 888 KB cap.</p>
+          <p class="inline-note"><code>zclaw.bin</code> from the same build is <strong>865,888 bytes</strong> (~845.6 KiB), under the 888 KiB cap.</p>
         </section>
 
         <section class="section">

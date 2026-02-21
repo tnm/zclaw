@@ -11,9 +11,9 @@ The smallest possible AI personal assistant.
 
 Written in C. Runs on an ESP32. Or runs on many of them. Put one everywhere! Talk to your agent via Telegram for ~$5 in hardware. 
 
-Create scheduled tasks & custom tools, ask questions, and use sensors. 888kb binary, easy flash, and terminal-based provisioning. 
+Create scheduled tasks & custom tools, ask questions, and use sensors. 888 KiB binary, easy flash, and terminal-based provisioning. 
 
-As a rule, the binary will never exceed 888 kilobytes on the default build. MIT-licensed.
+As a rule, the binary will never exceed 888 KiB on the default build. MIT-licensed.
 
 <br clear="right" />
 
@@ -37,7 +37,7 @@ Agent: Done. GPIO2 is now off.
 - **Persistent memory** — Remembers things across reboots
 - **Any LLM backend** — Anthropic, OpenAI, or open source models via OpenRouter
 - **$5 hardware** — Just an ESP32 dev board and WiFi
-- **~888 KB guaranteed max binary** — Fits in dual OTA partitions with ~40% free
+- **~888 KiB guaranteed max binary** — Fits in dual OTA partitions with ~40% free
 
 ### Soon?
 
@@ -115,7 +115,7 @@ The full old-school docs experience lives in `docs-site/` and is best viewed thr
 ```
 
 Direct chapter links:
-- [Chapter 0: The 888 KB Assistant](docs-site/index.html)
+- [Chapter 0: The 888 KiB Assistant](docs-site/index.html)
 - [Getting Started](docs-site/getting-started.html)
 - [Tool Reference](docs-site/tools.html)
 - [Architecture](docs-site/architecture.html)

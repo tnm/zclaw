@@ -105,15 +105,22 @@ source ~/esp/esp-idf/export.sh
 idf.py menuconfig
 ```
 
-### Docs Site (K&R-style)
+### Full Documentation (K&R-style)
 
-A custom old-school docs experience now lives in `docs-site/`.
+The full old-school docs experience lives in `docs-site/` and is best viewed through the local docs server.
 
 ```bash
-./scripts/docs-site.sh
-# or:
-./scripts/docs-site.sh --host 0.0.0.0 --port 8788 --open
+./scripts/docs-site.sh --open
+# serves at http://127.0.0.1:8788
 ```
+
+Direct chapter links:
+- [Chapter 0: The 888 KB Assistant](docs-site/index.html)
+- [Getting Started](docs-site/getting-started.html)
+- [Tool Reference](docs-site/tools.html)
+- [Architecture](docs-site/architecture.html)
+- [Security](docs-site/security.html)
+- [Docs site README](docs-site/README.md)
 
 ### Telegram Setup
 

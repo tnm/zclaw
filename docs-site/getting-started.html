@@ -39,9 +39,25 @@
         </header>
 
         <section class="section">
+          <h2>Basic Hardware</h2>
+          <ul>
+            <li>Tested targets: <strong>ESP32-C3</strong>, <strong>ESP32-S3</strong>, and <strong>ESP32-C6</strong>.</li>
+            <li>Recommended starter board: Seeed XIAO ESP32-C3 (USB-C, small footprint, low cost).</li>
+            <li>Use a real data USB cable (not charge-only), then connect board to host.</li>
+            <li>Find your serial port before flashing:
+              <code>/dev/cu.usbmodem*</code> (macOS) or <code>/dev/ttyUSB*</code>/<code>/dev/ttyACM*</code> (Linux).
+            </li>
+          </ul>
+        </section>
+
+        <section class="section">
           <h2>One-Line Bootstrap</h2>
           <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap.sh)</pre>
           <p>Bootstrap clones or updates the repo, then runs <code>./install.sh</code>.</p>
+          <ul>
+            <li>Installer remembers answers in <code>~/.config/zclaw/install.env</code> (disable with <code>--no-remember</code>).</li>
+            <li>Interactive flashing defaults to standard mode; encrypted flashing is opt-in with <code>--flash-mode secure</code>.</li>
+          </ul>
           <p class="inline-note">Want non-interactive install? Use <code>-y</code> and explicit no/yes flags: <code>./install.sh -y --build --flash --provision --no-qemu --no-cjson</code>.</p>
         </section>
 
@@ -60,7 +76,7 @@
         <section class="section">
           <h2>First Boot Flow</h2>
           <ol>
-            <li>Flash firmware (<code>./scripts/flash.sh</code> or <code>./scripts/flash-secure.sh</code>).</li>
+            <li>Flash firmware (<code>./scripts/flash.sh</code> or <code>./scripts/flash-secure.sh</code>). Flash scripts auto-detect chip target and can prompt for <code>idf.py set-target &lt;chip&gt;</code> on mismatch.</li>
             <li>Provision credentials (<code>./scripts/provision.sh --port &lt;serial-port&gt;</code>).</li>
             <li>Enter WiFi SSID, LLM provider, and API key. Optional Telegram fields can be filled now or later.</li>
             <li>Reboot and inspect logs with <code>./scripts/monitor.sh</code>.</li>
@@ -85,6 +101,24 @@
 # No hardware (mock agent)
 ./scripts/web-relay.sh --mock-agent --host 0.0.0.0 --port 8787</pre>
           <p>Only one process should own the serial port at a time.</p>
+          <pre># No-clone bootstrap path
+bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap-web-relay.sh) -- --serial-port /dev/cu.usbmodem1101 --host 0.0.0.0 --port 8787</pre>
+        </section>
+
+        <section class="section">
+          <h2>Serial Port Conflicts</h2>
+          <pre># Release ESP-IDF monitor/holders
+./scripts/release-port.sh
+
+# Relay helper can stop monitor holders automatically
+./scripts/web-relay.sh --serial-port /dev/cu.usbmodem1101 --kill-monitor --host 0.0.0.0 --port 8787</pre>
+        </section>
+
+        <section class="section">
+          <h2>Advanced Board Config</h2>
+          <pre>source ~/esp/esp-idf/export.sh
+idf.py menuconfig</pre>
+          <p>Adjust GPIO safety range/allowlist under <code>zclaw Configuration -&gt; GPIO Tool Safety</code>.</p>
         </section>
 
         <section class="section">

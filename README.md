@@ -49,10 +49,8 @@ Agent: Done. GPIO2 is now off.
 
 ## Hardware
 
-Supported and tested targets are **ESP32-C3** and **ESP32-S3**.
-
-Other ESP32 variants should work, but may require manual
-ESP-IDF tool install/target setup:
+Tested targets are **ESP32-C3**, **ESP32-S3**, and **ESP32-C6**.
+Other ESP32 variants should work fine (some may require manual ESP-IDF target setup):
 
 - Default GPIO tool pin limits are configured for ESP32-C3 dev workflows (`GPIO 2-10`).
 - If your board wiring differs, adjust `zclaw Configuration -> GPIO Tool Safety` in `idf.py menuconfig`.
@@ -112,9 +110,9 @@ idf.py menuconfig
 A custom old-school docs experience now lives in `docs-site/`.
 
 ```bash
-cd docs-site
-python3 -m http.server 8788
-# open http://127.0.0.1:8788
+./scripts/docs-site.sh
+# or:
+./scripts/docs-site.sh --host 0.0.0.0 --port 8788 --open
 ```
 
 ### Telegram Setup
@@ -292,6 +290,7 @@ Or use the convenience scripts:
 ./scripts/release-port.sh   # Release busy serial port holders
 ./scripts/emulate.sh        # Run in QEMU emulator
 ./scripts/exit-emulator.sh  # Stop QEMU emulator
+./scripts/docs-site.sh      # Serve the custom docs-site locally
 ./scripts/web-relay.sh      # Optional hosted web relay + mobile chat UI (safe launcher)
 ./scripts/bootstrap-web-relay.sh  # Download/run relay files without full repo clone
 ```
@@ -390,6 +389,7 @@ zclaw/
 │   ├── release-port.sh # Release busy serial port holders
 │   ├── emulate.sh      # QEMU emulator
 │   ├── exit-emulator.sh # Stop QEMU emulator
+│   ├── docs-site.sh    # Serve custom docs site locally
 │   ├── web-relay.sh    # Web relay launcher with serial-port guards
 │   ├── web_relay.py    # Hosted web relay + mobile chat UI
 │   ├── requirements-web-relay.txt # Optional serial bridge deps

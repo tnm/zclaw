@@ -5,9 +5,9 @@ Custom static docs site with a print-book visual style inspired by classic C ref
 ## Preview locally
 
 ```bash
-cd docs-site
-python3 -m http.server 8788
-# open http://127.0.0.1:8788
+./scripts/docs-site.sh
+# or:
+./scripts/docs-site.sh --host 0.0.0.0 --port 8788 --open
 ```
 
 ## Structure
@@ -19,4 +19,3 @@ python3 -m http.server 8788
 - `security.html` - security and ops
 - `styles.css` - visual system and responsive layout
 - `app.js` - sidebar/nav behavior
-

@@ -4,7 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>zclaw Docs | Field Manual</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=5">
+    <link rel="stylesheet" href="styles.css?v=5">
   </head>
   <body>
     <div class="page">
@@ -21,13 +22,15 @@
           <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
           <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
         </ul>
-        <p class="sidebar-note">Designed as a readable engineering notebook: paper tones, clear hierarchy, and dense but human text.</p>
+        <p class="sidebar-note">Practical notes for building, flashing, and operating zclaw in the field.</p>
       </aside>
 
       <main class="content-wrap">
         <div class="topbar">
           <p class="kicker">zclaw docs</p>
-          <button class="menu-toggle" type="button">Menu</button>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
         </div>
 
         <header>
@@ -38,15 +41,21 @@
 
         <section class="hero-grid">
           <article class="paper-card">
-            <h3>What It Feels Like</h3>
-            <p class="quote">"Remind me in 20 minutes." "Water the plants every day at 8:15." "Set GPIO 5 high." You send plain language, zclaw maps to tool calls, firmware executes on silicon.</p>
+            <h3>Enjoy with zclaw</h3>
+            <ul class="quote-list">
+              <li>"Remind me in 20 minutes."</li>
+              <li>"Water the plants every day at 8:15."</li>
+              <li>"Set GPIO 5 high."</li>
+              <li>"Remember that my office sensor is on GPIO 4."</li>
+            </ul>
+            <p class="quote">You send plain language, zclaw maps to tool calls, firmware executes on silicon.</p>
             <pre class="code">You: In 20 minutes, check the garage sensor
 Agent: Created schedule #7: once in 20 min -> check the garage sensor</pre>
           </article>
 
           <figure class="figure paper-card">
-            <img src="../docs/images/lobster_xiao_cropped_left.png" alt="Lobster soldering a Seeed Studio XIAO ESP32-C3">
-            <p class="inline-note">Supported targets: ESP32-C3 and ESP32-S3. Core design goal: tiny footprint, simple deploy path.</p>
+            <img src="images/lobster_xiao_cropped_left.png" alt="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+            <p class="inline-note">Tested targets: ESP32-C3, ESP32-S3, and ESP32-C6. Other ESP32 variants should work fine.</p>
           </figure>
         </section>
 
@@ -87,6 +96,6 @@ Agent: Created schedule #7: once in 20 min -> check the garage sensor</pre>
         </footer>
       </main>
     </div>
-    <script src="app.js"></script>
+    <script src="app.js?v=5"></script>
   </body>
 </html>

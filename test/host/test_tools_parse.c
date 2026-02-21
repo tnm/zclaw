@@ -116,6 +116,29 @@ TEST(cron_set_daily)
 }
 
 /*
+ * Test parsing cron_set input (once)
+ */
+TEST(cron_set_once)
+{
+    const char *json = "{\"type\": \"once\", \"delay_minutes\": 20, \"action\": \"check door lock\"}";
+
+    cJSON *input = cJSON_Parse(json);
+    ASSERT(input != NULL);
+
+    cJSON *type = cJSON_GetObjectItem(input, "type");
+    ASSERT_STR_EQ(type->valuestring, "once");
+
+    cJSON *delay = cJSON_GetObjectItem(input, "delay_minutes");
+    ASSERT(delay->valueint == 20);
+
+    cJSON *action = cJSON_GetObjectItem(input, "action");
+    ASSERT_STR_EQ(action->valuestring, "check door lock");
+
+    cJSON_Delete(input);
+    return 0;
+}
+
+/*
  * Test missing required field
  */
 TEST(missing_field)
@@ -177,6 +200,13 @@ int test_tools_parse_all(void)
 
     printf("  cron_set_daily... ");
     if (test_cron_set_daily() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  cron_set_once... ");
+    if (test_cron_set_once() == 0) {
         printf("OK\n");
     } else {
         failures++;

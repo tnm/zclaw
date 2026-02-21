@@ -161,7 +161,7 @@ This relay approach does not add web UI code to ESP32 firmware binary.
 | `memory_get` | Retrieve stored user value (`u_*` keys only) |
 | `memory_list` | List stored user keys (`u_*`) |
 | `memory_delete` | Delete stored user key (`u_*` keys only) |
-| `cron_set` | Schedule periodic/daily task |
+| `cron_set` | Schedule periodic/daily/one-time task |
 | `cron_list` | List scheduled tasks |
 | `cron_delete` | Delete scheduled task |
 | `get_time` | Get current time |
@@ -185,6 +185,7 @@ Example tool call input:
 ### Timezone And Daily Schedules
 
 - `daily` schedules run in the device timezone.
+- `once` schedules run a single time after N minutes.
 - Default timezone is `UTC0` until changed.
 - Use `set_timezone` first if you want local wall-clock reminders.
 
@@ -196,6 +197,9 @@ Agent: Timezone set to PST8PDT,M3.2.0/2,M11.1.0/2 (PST)
 
 You: Remind me daily at 8:15 to water the plants
 Agent: Scheduled a daily reminder at 08:15 PST.
+
+You: In 20 minutes, check the garage sensor
+Agent: Scheduled a one-time reminder in 20 minutes.
 ```
 
 ### User-Defined Tools

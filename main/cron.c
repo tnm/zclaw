@@ -281,6 +281,10 @@ uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, co
         ESP_LOGE(TAG, "Invalid periodic interval: %u", interval_or_hour);
         return 0;
     }
+    if (type == CRON_TYPE_ONCE && !cron_validate_periodic_interval((int)interval_or_hour)) {
+        ESP_LOGE(TAG, "Invalid once delay: %u", interval_or_hour);
+        return 0;
+    }
     if (type == CRON_TYPE_DAILY && !cron_validate_daily_time((int)interval_or_hour, (int)minute)) {
         ESP_LOGE(TAG, "Invalid daily time: %u:%u", interval_or_hour, minute);
         return 0;
@@ -322,7 +326,7 @@ uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, co
     entry->enabled = true;
     entry->last_run = 0;
 
-    if (type == CRON_TYPE_PERIODIC) {
+    if (type == CRON_TYPE_PERIODIC || type == CRON_TYPE_ONCE) {
         entry->interval_minutes = interval_or_hour;
         entry->hour = 0;
         entry->minute = 0;
@@ -330,6 +334,14 @@ uint8_t cron_set(cron_type_t type, uint16_t interval_or_hour, uint8_t minute, co
         entry->interval_minutes = 0;
         entry->hour = interval_or_hour;
         entry->minute = minute;
+    }
+
+    if (type == CRON_TYPE_ONCE) {
+        time_t now;
+        time(&now);
+        if (now >= 0) {
+            entry->last_run = (uint32_t)now;
+        }
     }
 
     strncpy(entry->action, action, CRON_MAX_ACTION_LEN - 1);
@@ -391,11 +403,14 @@ void cron_list(char *buf, size_t buf_len)
             case CRON_TYPE_PERIODIC: type_str = "periodic"; break;
             case CRON_TYPE_DAILY: type_str = "daily"; break;
             case CRON_TYPE_CONDITION: type_str = "condition"; break;
+            case CRON_TYPE_ONCE: type_str = "once"; break;
         }
         ok &= cJSON_AddStringToObject(obj, "type", type_str) != NULL;
 
         if (s_entries[i].type == CRON_TYPE_PERIODIC) {
             ok &= cJSON_AddNumberToObject(obj, "interval_minutes", s_entries[i].interval_minutes) != NULL;
+        } else if (s_entries[i].type == CRON_TYPE_ONCE) {
+            ok &= cJSON_AddNumberToObject(obj, "delay_minutes", s_entries[i].interval_minutes) != NULL;
         } else {
             char time_str[8];
             snprintf(time_str, sizeof(time_str), "%02d:%02d", s_entries[i].hour, s_entries[i].minute);
@@ -484,6 +499,12 @@ static void check_entries(void)
             if (now - entry->last_run >= interval_seconds) {
                 should_fire = true;
             }
+        } else if (entry->type == CRON_TYPE_ONCE) {
+            uint32_t delay_seconds = entry->interval_minutes * 60;
+            time_t created_at = (time_t)entry->last_run;
+            if (now >= created_at && (uint32_t)(now - created_at) >= delay_seconds) {
+                should_fire = true;
+            }
         } else if (entry->type == CRON_TYPE_DAILY && s_time_synced) {
             // Check if current time matches
             if (timeinfo.tm_hour == entry->hour && timeinfo.tm_min == entry->minute) {
@@ -496,16 +517,25 @@ static void check_entries(void)
         }
 
         if (should_fire) {
-            entry->last_run = now;
-            if (save_entry(i) != ESP_OK) {
-                ESP_LOGW(TAG, "Failed to persist run timestamp for cron %d", entry->id);
-            }
-
             if (pending_count < CRON_MAX_ENTRIES) {
                 s_pending_fires[pending_count].id = entry->id;
                 strncpy(s_pending_fires[pending_count].action, entry->action, sizeof(s_pending_fires[pending_count].action) - 1);
                 s_pending_fires[pending_count].action[sizeof(s_pending_fires[pending_count].action) - 1] = '\0';
                 pending_count++;
+            }
+
+            if (entry->type == CRON_TYPE_ONCE) {
+                uint8_t fired_id = entry->id;
+                entry->id = 0;
+                if (save_entry(i) != ESP_OK) {
+                    entry->id = fired_id;
+                    ESP_LOGW(TAG, "Failed to clear one-shot cron %d after firing", fired_id);
+                }
+            } else {
+                entry->last_run = now;
+                if (save_entry(i) != ESP_OK) {
+                    ESP_LOGW(TAG, "Failed to persist run timestamp for cron %d", entry->id);
+                }
             }
         }
     }

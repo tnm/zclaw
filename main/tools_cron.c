@@ -121,7 +121,7 @@ bool tools_cron_set_handler(const cJSON *input, char *result, size_t result_len)
     cJSON *action_json = cJSON_GetObjectItem(input, "action");
 
     if (!type_json || !cJSON_IsString(type_json)) {
-        snprintf(result, result_len, "Error: 'type' required (periodic/daily)");
+        snprintf(result, result_len, "Error: 'type' required (periodic/daily/once)");
         return false;
     }
     if (!action_json || !cJSON_IsString(action_json)) {
@@ -173,8 +173,20 @@ bool tools_cron_set_handler(const cJSON *input, char *result, size_t result_len)
         }
         interval_or_hour = (uint16_t)hour;
         minute = (uint8_t)minute_int;
+    } else if (strcmp(type_str, "once") == 0) {
+        type = CRON_TYPE_ONCE;
+        cJSON *delay = cJSON_GetObjectItem(input, "delay_minutes");
+        if (!delay || !cJSON_IsNumber(delay)) {
+            snprintf(result, result_len, "Error: 'delay_minutes' required for once");
+            return false;
+        }
+        if (!cron_validate_periodic_interval(delay->valueint)) {
+            snprintf(result, result_len, "Error: delay_minutes must be 1-1440");
+            return false;
+        }
+        interval_or_hour = (uint16_t)delay->valueint;
     } else {
-        snprintf(result, result_len, "Error: type must be 'periodic' or 'daily'");
+        snprintf(result, result_len, "Error: type must be 'periodic', 'daily', or 'once'");
         return false;
     }
 
@@ -183,11 +195,14 @@ bool tools_cron_set_handler(const cJSON *input, char *result, size_t result_len)
         if (type == CRON_TYPE_PERIODIC) {
             snprintf(result, result_len, "Created schedule #%d: every %d min → %s",
                      id, interval_or_hour, action);
-        } else {
+        } else if (type == CRON_TYPE_DAILY) {
             char timezone_abbrev[16];
             cron_get_timezone_abbrev(timezone_abbrev, sizeof(timezone_abbrev));
             snprintf(result, result_len, "Created schedule #%d: daily at %02d:%02d %s → %s",
                      id, interval_or_hour, minute, timezone_abbrev, action);
+        } else {
+            snprintf(result, result_len, "Created schedule #%d: once in %d min → %s",
+                     id, interval_or_hour, action);
         }
         return true;
     }

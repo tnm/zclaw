@@ -103,12 +103,13 @@ TOOLS = [
     },
     {
         "name": "cron_set",
-        "description": "Create a scheduled task. Type 'periodic' runs every N minutes. Type 'daily' runs at a specific time.",
+        "description": "Create a scheduled task. Type 'periodic' runs every N minutes. Type 'daily' runs at a specific time. Type 'once' runs one time after N minutes.",
         "input_schema": {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["periodic", "daily"]},
+                "type": {"type": "string", "enum": ["periodic", "daily", "once"]},
                 "interval_minutes": {"type": "integer", "description": "For periodic: minutes between runs"},
+                "delay_minutes": {"type": "integer", "description": "For once: minutes from now before one-time run"},
                 "hour": {"type": "integer", "description": "For daily: hour 0-23"},
                 "minute": {"type": "integer", "description": "For daily: minute 0-59"},
                 "action": {"type": "string", "description": "What to do when triggered"}

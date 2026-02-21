@@ -7,12 +7,14 @@
 #include "messages.h"
 #include "ratelimit.h"
 #include "cJSON.h"
+#include "esp_timer.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include <string.h>
 #include <stdlib.h>
+#include <inttypes.h>
 
 static const char *TAG = "agent";
 
@@ -33,6 +35,51 @@ static int s_history_len = 0;
 // Buffers (static to avoid stack overflow)
 static char s_response_buf[LLM_RESPONSE_BUF_SIZE];
 static char s_tool_result_buf[TOOL_RESULT_BUF_SIZE];
+
+typedef struct {
+    int64_t started_us;
+    uint64_t llm_us_total;
+    uint64_t tool_us_total;
+    int llm_calls;
+    int tool_calls;
+    int rounds;
+} request_metrics_t;
+
+static uint64_t elapsed_us_since(int64_t started_us)
+{
+    int64_t now_us = esp_timer_get_time();
+    if (now_us <= started_us) {
+        return 0;
+    }
+    return (uint64_t)(now_us - started_us);
+}
+
+static uint32_t us_to_ms_u32(uint64_t duration_us)
+{
+    uint64_t duration_ms = duration_us / 1000ULL;
+    if (duration_ms > UINT32_MAX) {
+        return UINT32_MAX;
+    }
+    return (uint32_t)duration_ms;
+}
+
+static void metrics_log_request(const request_metrics_t *metrics, const char *outcome)
+{
+    if (!metrics) {
+        return;
+    }
+
+    ESP_LOGI(TAG,
+             "METRIC request outcome=%s total_ms=%" PRIu32 " llm_ms=%" PRIu32
+             " tool_ms=%" PRIu32 " rounds=%d llm_calls=%d tool_calls=%d",
+             outcome ? outcome : "unknown",
+             us_to_ms_u32(elapsed_us_since(metrics->started_us)),
+             us_to_ms_u32(metrics->llm_us_total),
+             us_to_ms_u32(metrics->tool_us_total),
+             metrics->rounds,
+             metrics->llm_calls,
+             metrics->tool_calls);
+}
 
 static void history_rollback_to(int marker, const char *reason)
 {
@@ -122,6 +169,14 @@ static void process_message(const char *user_message)
 {
     ESP_LOGI(TAG, "Processing: %s", user_message);
     int history_turn_start = s_history_len;
+    request_metrics_t metrics = {
+        .started_us = esp_timer_get_time(),
+        .llm_us_total = 0,
+        .tool_us_total = 0,
+        .llm_calls = 0,
+        .tool_calls = 0,
+        .rounds = 0,
+    };
 
     // Get tools
     int tool_count;
@@ -135,6 +190,7 @@ static void process_message(const char *user_message)
 
     while (!done && rounds < MAX_TOOL_ROUNDS) {
         rounds++;
+        metrics.rounds = rounds;
 
         // Build request JSON (user message already in history)
         char *request = json_build_request(
@@ -150,6 +206,7 @@ static void process_message(const char *user_message)
             ESP_LOGE(TAG, "Failed to build request JSON");
             history_rollback_to(history_turn_start, "request build failed");
             send_response("Error: Failed to build request");
+            metrics_log_request(&metrics, "request_build_error");
             return;
         }
 
@@ -161,6 +218,7 @@ static void process_message(const char *user_message)
             free(request);
             history_rollback_to(history_turn_start, "rate limited");
             send_response(rate_reason);
+            metrics_log_request(&metrics, "rate_limited");
             return;
         }
 
@@ -169,7 +227,10 @@ static void process_message(const char *user_message)
         int retry_delay_ms = LLM_RETRY_BASE_MS;
 
         for (int retry = 0; retry < LLM_MAX_RETRIES; retry++) {
+            int64_t llm_started_us = esp_timer_get_time();
             err = llm_request(request, s_response_buf, sizeof(s_response_buf));
+            metrics.llm_us_total += elapsed_us_since(llm_started_us);
+            metrics.llm_calls++;
             if (err == ESP_OK) {
                 break;
             }
@@ -195,6 +256,7 @@ static void process_message(const char *user_message)
             ESP_LOGE(TAG, "LLM request failed after %d retries", LLM_MAX_RETRIES);
             history_rollback_to(history_turn_start, "llm request failed");
             send_response("Error: Failed to contact LLM API after retries");
+            metrics_log_request(&metrics, "llm_error");
             return;
         }
 
@@ -215,6 +277,7 @@ static void process_message(const char *user_message)
             history_rollback_to(history_turn_start, "llm response parse failed");
             send_response("Error: Failed to parse LLM response");
             json_free_parsed_response();
+            metrics_log_request(&metrics, "parse_error");
             return;
         }
 
@@ -232,6 +295,7 @@ static void process_message(const char *user_message)
 
             // Check if it's a user-defined tool
             const user_tool_t *user_tool = user_tools_find(tool_name);
+            metrics.tool_calls++;
             if (user_tool) {
                 // User tool: return the action as "instruction" for Claude to execute
                 snprintf(s_tool_result_buf, sizeof(s_tool_result_buf),
@@ -239,7 +303,9 @@ static void process_message(const char *user_message)
                 ESP_LOGI(TAG, "User tool '%s' action: %s", tool_name, user_tool->action);
             } else {
                 // Built-in tool: execute directly
+                int64_t tool_started_us = esp_timer_get_time();
                 tools_execute(tool_name, tool_input, s_tool_result_buf, sizeof(s_tool_result_buf));
+                metrics.tool_us_total += elapsed_us_since(tool_started_us);
                 ESP_LOGI(TAG, "Tool result: %s", s_tool_result_buf);
             }
 
@@ -266,7 +332,11 @@ static void process_message(const char *user_message)
         ESP_LOGW(TAG, "Max tool rounds reached");
         history_add("assistant", "(Reached max tool iterations)", false, false, NULL, NULL);
         send_response("(Reached max tool iterations)");
+        metrics_log_request(&metrics, "max_rounds");
+        return;
     }
+
+    metrics_log_request(&metrics, "success");
 }
 
 #ifdef TEST_BUILD

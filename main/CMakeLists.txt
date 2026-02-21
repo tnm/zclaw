@@ -31,6 +31,7 @@ idf_component_register(
         esp_http_client
         esp_netif
         esp-tls
+        esp_timer
         json
         driver
         lwip

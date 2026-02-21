@@ -317,9 +317,14 @@
   function addUtilityButtons() {
     var themeSwitcherTop = createThemeSwitcher('theme-switcher-top');
     var keysButtonTop = utilityButton('', 'keys-toggle', toggleShortcutPanel);
+    var repoButtonTop = utilityLink('Repo', 'repo-link repo-link-top', 'https://github.com/tnm/zclaw');
     setButtonLabel(keysButtonTop, 'Keys');
     keysButtonTop.setAttribute('title', 'Show keyboard shortcuts (?)');
     keysButtonTop.setAttribute('aria-label', 'Show keyboard shortcuts');
+    repoButtonTop.target = '_blank';
+    repoButtonTop.rel = 'noopener noreferrer';
+    repoButtonTop.setAttribute('title', 'Open GitHub repository');
+    repoButtonTop.setAttribute('aria-label', 'Open GitHub repository');
 
     if (topbar) {
       var topbarActions = topbar.querySelector('.topbar-actions');
@@ -333,6 +338,7 @@
         topbarActions.appendChild(menuButton);
       }
 
+      topbarActions.appendChild(repoButtonTop);
       topbarActions.appendChild(themeSwitcherTop);
       topbarActions.appendChild(keysButtonTop);
     }

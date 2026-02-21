@@ -217,6 +217,7 @@ body {
   width: 100%;
   max-width: 980px;
   justify-self: start;
+  min-width: 0;
 }
 
 .topbar {
@@ -692,9 +693,14 @@ kbd {
   }
 
   .topbar-actions .utility-btn {
-    width: 2.35rem;
+    width: auto;
     min-width: 2.35rem;
-    padding: 0;
+    padding: 0 0.55rem;
+  }
+
+  .topbar-actions .repo-link-top {
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
   }
 
   .topbar-actions .theme-switcher {
@@ -744,13 +750,29 @@ kbd {
   }
 
   table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
+    display: table;
+    width: 100%;
+    table-layout: fixed;
+    white-space: normal;
+  }
+
+  th,
+  td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   pre,
   .code {
     font-size: 0.84rem;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  code {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 }

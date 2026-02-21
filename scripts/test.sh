@@ -87,7 +87,8 @@ run_host_tests() {
     python3 -m unittest -q \
         test_qemu_live_llm_bridge.py \
         test_web_relay.py \
-        test_install_provision_scripts.py
+        test_install_provision_scripts.py \
+        test_api_provider_harness.py
     echo ""
 }
 

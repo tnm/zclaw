@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run zclaw tool-calling API harness against Anthropic."""
+"""Run zclaw tool-calling API harness against OpenAI."""
 
 import argparse
 import os
@@ -9,8 +9,8 @@ from provider_harness import PROVIDERS, interactive_mode, run_conversation
 
 
 def main() -> None:
-    provider = PROVIDERS["anthropic"]
-    parser = argparse.ArgumentParser(description="Test zclaw tool calling with Anthropic API")
+    provider = PROVIDERS["openai"]
+    parser = argparse.ArgumentParser(description="Test zclaw tool calling with OpenAI API")
     parser.add_argument("message", nargs="?", help="Message to send")
     parser.add_argument("--interactive", "-i", action="store_true", help="Interactive mode")
     parser.add_argument("--quiet", "-q", action="store_true", help="Only show final response")

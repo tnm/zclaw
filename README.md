@@ -80,6 +80,7 @@ Recommended starter board: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/See
 - `./scripts/benchmark.sh` - Benchmark relay/serial latency
 - `./scripts/docs-site.sh` - Serve docs site
 - `./scripts/test.sh` - Run host/device test flows
+- `./scripts/test-api.sh` - Run live provider API checks (manual/local)
 
 ## Latency Benchmarking
 

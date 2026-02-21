@@ -379,7 +379,7 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  zclaw v2.0");
+    ESP_LOGI(TAG, "  zclaw v2.0.4");
     ESP_LOGI(TAG, "  AI Agent on ESP32");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");

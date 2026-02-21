@@ -225,9 +225,23 @@ static void handle_start_command(void)
         "- memory list|get|set|del\n"
         "\n"
         "Control Telegram command intake:\n"
+        "- /help (show help)\n"
+        "- /settings (show status)\n"
         "- /stop (pause)\n"
         "- /resume (resume)";
     send_response(START_HELP_TEXT);
+}
+
+static void handle_settings_command(void)
+{
+    char settings_text[256];
+    snprintf(settings_text, sizeof(settings_text),
+             "zclaw settings:\n"
+             "- Message intake: %s\n"
+             "- Telegram commands: /start, /help, /settings, /stop, /resume\n"
+             "- Device settings are global (e.g., timezone <name>)",
+             s_messages_paused ? "paused" : "active");
+    send_response(settings_text);
 }
 
 // Process a single user message
@@ -256,9 +270,21 @@ static void process_message(const char *user_message)
         return;
     }
 
+    if (is_command(user_message, "settings")) {
+        handle_settings_command();
+        metrics_log_request(&metrics, "settings_handled");
+        return;
+    }
+
     if (s_messages_paused) {
         ESP_LOGD(TAG, "Paused mode: ignoring message");
         metrics_log_request(&metrics, "paused_drop");
+        return;
+    }
+
+    if (is_command(user_message, "help")) {
+        handle_start_command();
+        metrics_log_request(&metrics, "help_handled");
         return;
     }
 

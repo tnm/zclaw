@@ -12,7 +12,6 @@ The smallest possible AI personal assistant for ESP32.
 zclaw is written in C and runs on ESP32 boards with a strict firmware budget target of **<= 888 KB** on the default build. It supports scheduled tasks, GPIO control, persistent memory, and custom tool composition through natural language.
 
 Fun to use, fun to hack on.
-
 <br clear="right" />
 
 ## Full Documentation

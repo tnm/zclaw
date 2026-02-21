@@ -77,6 +77,16 @@ normalize_serial_port() {
     echo "$port"
 }
 
+is_placeholder_ssid() {
+    local ssid="$1"
+    case "$ssid" in
+        "<redacted>"|"<hidden>"|"[hidden]"|"***")
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 select_serial_port() {
     local candidates=()
     local p
@@ -121,8 +131,10 @@ detect_host_wifi_ssid() {
     local ssid=""
 
     if [ -n "${ZCLAW_WIFI_SSID:-}" ]; then
-        echo "$ZCLAW_WIFI_SSID"
-        return 0
+        if ! is_placeholder_ssid "$ZCLAW_WIFI_SSID"; then
+            echo "$ZCLAW_WIFI_SSID"
+            return 0
+        fi
     fi
 
     case "$(uname -s)" in
@@ -130,7 +142,7 @@ detect_host_wifi_ssid() {
             # Deprecated, but still present on current macOS and often the most direct.
             if [ -x "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport" ]; then
                 ssid="$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | sed -nE 's/^[[:space:]]*SSID:[[:space:]]*(.+)$/\1/p' | head -1)"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
@@ -149,7 +161,7 @@ detect_host_wifi_ssid() {
                     }
                     in_block && /^$/ {in_block=0}
                 ' | head -1)"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
@@ -160,7 +172,7 @@ detect_host_wifi_ssid() {
                 while IFS= read -r dev; do
                     [ -n "$dev" ] || continue
                     ssid="$(networksetup -getairportnetwork "$dev" 2>/dev/null | sed -nE 's/^Current Wi-Fi Network: (.*)$/\1/p')"
-                    if [ -n "$ssid" ]; then
+                    if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                         echo "$ssid"
                         return 0
                     fi
@@ -175,14 +187,14 @@ detect_host_wifi_ssid() {
         Linux)
             if command -v nmcli >/dev/null 2>&1; then
                 ssid="$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes" {print $2; exit}')"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
             fi
             if command -v iwgetid >/dev/null 2>&1; then
                 ssid="$(iwgetid -r 2>/dev/null || true)"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi

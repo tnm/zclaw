@@ -1,0 +1,28 @@
+name: Firmware Target Matrix
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-targets:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.4
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [esp32c3, esp32s3, esp32c6]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build firmware (${{ matrix.target }})
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py \
+            -B "build-${{ matrix.target }}" \
+            -D IDF_TARGET="${{ matrix.target }}" \
+            -D SDKCONFIG="sdkconfig.${{ matrix.target }}.ci" \
+            -D SDKCONFIG_DEFAULTS="sdkconfig.defaults" \
+            build

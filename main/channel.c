@@ -283,7 +283,7 @@ static void channel_read_task(void *arg)
 // Write task: watch output queue, print responses
 static void channel_write_task(void *arg)
 {
-    channel_msg_t msg;
+    channel_output_msg_t msg;
 
     while (1) {
         if (xQueueReceive(s_output_queue, &msg, portMAX_DELAY) == pdTRUE) {

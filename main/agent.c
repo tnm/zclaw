@@ -134,9 +134,9 @@ static void queue_channel_response(const char *text)
         return;
     }
 
-    channel_msg_t msg;
-    strncpy(msg.text, text, CHANNEL_RX_BUF_SIZE - 1);
-    msg.text[CHANNEL_RX_BUF_SIZE - 1] = '\0';
+    channel_output_msg_t msg;
+    strncpy(msg.text, text, CHANNEL_TX_BUF_SIZE - 1);
+    msg.text[CHANNEL_TX_BUF_SIZE - 1] = '\0';
 
     if (xQueueSend(s_channel_output_queue, &msg, pdMS_TO_TICKS(1000)) != pdTRUE) {
         ESP_LOGE(TAG, "Failed to send response to channel queue");

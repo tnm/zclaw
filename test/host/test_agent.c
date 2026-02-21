@@ -30,7 +30,7 @@
 
 static int recv_channel_text(QueueHandle_t queue, char *out, size_t out_len)
 {
-    channel_msg_t msg;
+    channel_output_msg_t msg;
     if (xQueueReceive(queue, &msg, 0) != pdTRUE) {
         return 0;
     }
@@ -68,7 +68,7 @@ TEST(retries_with_backoff_and_fanout)
 
     reset_state();
 
-    channel_q = xQueueCreate(4, sizeof(channel_msg_t));
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
     telegram_q = xQueueCreate(4, sizeof(telegram_msg_t));
     ASSERT(channel_q != NULL);
     ASSERT(telegram_q != NULL);
@@ -99,11 +99,11 @@ TEST(retries_with_backoff_and_fanout)
 TEST(rate_limit_short_circuit)
 {
     QueueHandle_t channel_q;
-    char text[CHANNEL_RX_BUF_SIZE];
+    char text[CHANNEL_TX_BUF_SIZE];
 
     reset_state();
 
-    channel_q = xQueueCreate(2, sizeof(channel_msg_t));
+    channel_q = xQueueCreate(2, sizeof(channel_output_msg_t));
     ASSERT(channel_q != NULL);
     agent_test_set_queues(channel_q, NULL);
     mock_ratelimit_set_allow(false, "Rate limit hit");
@@ -123,11 +123,11 @@ TEST(rate_limit_short_circuit)
 TEST(fails_after_max_retries_without_extra_sleep)
 {
     QueueHandle_t channel_q;
-    char text[CHANNEL_RX_BUF_SIZE];
+    char text[CHANNEL_TX_BUF_SIZE];
 
     reset_state();
 
-    channel_q = xQueueCreate(2, sizeof(channel_msg_t));
+    channel_q = xQueueCreate(2, sizeof(channel_output_msg_t));
     ASSERT(channel_q != NULL);
     agent_test_set_queues(channel_q, NULL);
 
@@ -152,14 +152,14 @@ TEST(fails_after_max_retries_without_extra_sleep)
 TEST(failed_turn_does_not_pollute_followup_prompt)
 {
     QueueHandle_t channel_q;
-    char text[CHANNEL_RX_BUF_SIZE];
+    char text[CHANNEL_TX_BUF_SIZE];
     const char *success =
         "{\"content\":[{\"type\":\"text\",\"text\":\"fresh response\"}],\"stop_reason\":\"end_turn\"}";
     const char *last_request = NULL;
 
     reset_state();
 
-    channel_q = xQueueCreate(4, sizeof(channel_msg_t));
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
     ASSERT(channel_q != NULL);
     agent_test_set_queues(channel_q, NULL);
 
@@ -183,6 +183,36 @@ TEST(failed_turn_does_not_pollute_followup_prompt)
     ASSERT(last_request != NULL);
     ASSERT(strstr(last_request, "is this really on a tiny board") == NULL);
     ASSERT(strstr(last_request, "hello") != NULL);
+
+    vQueueDelete(channel_q);
+    return 0;
+}
+
+TEST(channel_output_allows_long_response)
+{
+    QueueHandle_t channel_q;
+    char text[CHANNEL_TX_BUF_SIZE];
+    char long_text[801];
+    char response_json[1200];
+
+    reset_state();
+
+    memset(long_text, 'x', sizeof(long_text) - 1);
+    long_text[sizeof(long_text) - 1] = '\0';
+    snprintf(response_json, sizeof(response_json),
+             "{\"content\":[{\"type\":\"text\",\"text\":\"%s\"}],\"stop_reason\":\"end_turn\"}",
+             long_text);
+
+    channel_q = xQueueCreate(2, sizeof(channel_output_msg_t));
+    ASSERT(channel_q != NULL);
+    agent_test_set_queues(channel_q, NULL);
+
+    ASSERT(mock_llm_push_result(ESP_OK, response_json));
+    agent_test_process_message("long output test");
+
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT(strlen(text) == strlen(long_text));
+    ASSERT(strcmp(text, long_text) == 0);
 
     vQueueDelete(channel_q);
     return 0;
@@ -217,6 +247,13 @@ int test_agent_all(void)
 
     printf("  failed_turn_does_not_pollute_followup_prompt... ");
     if (test_failed_turn_does_not_pollute_followup_prompt() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  channel_output_allows_long_response... ");
+    if (test_channel_output_allows_long_response() == 0) {
         printf("OK\n");
     } else {
         failures++;

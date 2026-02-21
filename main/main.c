@@ -10,6 +10,7 @@
 #include "ota.h"
 #include "boot_guard.h"
 #include "nvs_keys.h"
+#include "messages.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -423,8 +424,8 @@ void app_main(void)
     tools_init();
     channel_init();
 
-    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
-    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
+    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, sizeof(channel_msg_t));
+    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, sizeof(channel_output_msg_t));
     if (!input_queue || !channel_output_queue) {
         ESP_LOGE(TAG, "Failed to create emulator queues");
         esp_restart();
@@ -506,8 +507,8 @@ void app_main(void)
     channel_init();
 
     // 13. Create queues
-    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
-    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
+    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, sizeof(channel_msg_t));
+    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, sizeof(channel_output_msg_t));
     QueueHandle_t telegram_output_queue = NULL;
 #if CONFIG_ZCLAW_STUB_TELEGRAM
     bool telegram_enabled = false;
@@ -515,7 +516,7 @@ void app_main(void)
     bool telegram_enabled = telegram_is_configured();
 #endif
     if (telegram_enabled) {
-        telegram_output_queue = xQueueCreate(TELEGRAM_OUTPUT_QUEUE_LENGTH, TELEGRAM_MAX_MSG_LEN);
+        telegram_output_queue = xQueueCreate(TELEGRAM_OUTPUT_QUEUE_LENGTH, sizeof(telegram_msg_t));
     }
 
     if (!input_queue || !channel_output_queue || (telegram_enabled && !telegram_output_queue)) {

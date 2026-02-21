@@ -341,13 +341,17 @@
       var themeSwitcherSide = createThemeSwitcher('theme-switcher-side');
       var readmeButtonSide = utilityLink('README (good for agents)', 'readme-link', 'reference/README_COMPLETE.md');
       var keysButtonSide = utilityButton('', '', toggleShortcutPanel);
+      var repoButtonSide = utilityLink('GitHub Repository', 'repo-link', 'https://github.com/tnm/zclaw');
       setButtonLabel(keysButtonSide, 'Shortcuts');
+      repoButtonSide.target = '_blank';
+      repoButtonSide.rel = 'noopener noreferrer';
 
       var sidebarUtilities = document.createElement('div');
       sidebarUtilities.className = 'sidebar-utilities';
       sidebarUtilities.appendChild(themeSwitcherSide);
       sidebarUtilities.appendChild(readmeButtonSide);
       sidebarUtilities.appendChild(keysButtonSide);
+      sidebarUtilities.appendChild(repoButtonSide);
       sidebar.appendChild(sidebarUtilities);
     }
   }

@@ -10,6 +10,7 @@ idf_component_register(
         "tools_gpio.c"
         "tools_i2c.c"
         "tools_memory.c"
+        "tools_persona.c"
         "tools_cron.c"
         "tools_system.c"
         "memory.c"

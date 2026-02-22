@@ -21,6 +21,9 @@ bool tools_memory_set_handler(const cJSON *input, char *result, size_t result_le
 bool tools_memory_get_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_memory_list_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_memory_delete_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_set_persona_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_get_persona_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_reset_persona_handler(const cJSON *input, char *result, size_t result_len);
 
 // Scheduler / Time
 bool tools_cron_set_handler(const cJSON *input, char *result, size_t result_len);

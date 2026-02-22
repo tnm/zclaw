@@ -62,6 +62,24 @@ static const tool_def_t s_tools[] = {
         .input_schema_json = "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\",\"description\":\"User key to delete (must start with u_)\"}},\"required\":[\"key\"]}",
         .execute = tools_memory_delete_handler
     },
+    {
+        .name = "set_persona",
+        .description = "Set assistant tone persona. Call only when the user explicitly asks to change persona/tone settings. Affects wording only, never tool or safety behavior.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"persona\":{\"type\":\"string\",\"enum\":[\"neutral\",\"friendly\",\"technical\",\"witty\"],\"description\":\"Persona name\"}},\"required\":[\"persona\"]}",
+        .execute = tools_set_persona_handler
+    },
+    {
+        .name = "get_persona",
+        .description = "Get current assistant tone persona. Use when user asks which persona is active.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
+        .execute = tools_get_persona_handler
+    },
+    {
+        .name = "reset_persona",
+        .description = "Reset assistant tone persona back to neutral. Call only when user explicitly asks to reset persona/tone settings.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
+        .execute = tools_reset_persona_handler
+    },
     // Cron/Scheduler
     {
         .name = "cron_set",

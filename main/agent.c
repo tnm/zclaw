@@ -6,6 +6,8 @@
 #include "json_util.h"
 #include "messages.h"
 #include "ratelimit.h"
+#include "memory.h"
+#include "nvs_keys.h"
 #include "cJSON.h"
 #include "esp_timer.h"
 #include "esp_log.h"
@@ -15,6 +17,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <ctype.h>
 
 static const char *TAG = "agent";
 
@@ -26,6 +29,20 @@ static int64_t s_last_start_response_us = 0;
 static int64_t s_last_non_command_response_us = 0;
 static char s_last_non_command_text[CHANNEL_RX_BUF_SIZE] = {0};
 static bool s_messages_paused = false;
+static char s_system_prompt_buf[1536];
+
+typedef enum {
+    AGENT_PERSONA_NEUTRAL = 0,
+    AGENT_PERSONA_FRIENDLY,
+    AGENT_PERSONA_TECHNICAL,
+    AGENT_PERSONA_WITTY,
+} agent_persona_t;
+
+static agent_persona_t s_persona = AGENT_PERSONA_NEUTRAL;
+
+#ifdef TEST_BUILD
+static char s_test_persona_value[16] = {0};
+#endif
 
 // Conversation history (rolling message buffer)
 static conversation_msg_t s_history[MAX_HISTORY_TURNS * 2];
@@ -169,6 +186,120 @@ static bool is_whitespace_char(char c)
     return c == ' ' || c == '\t' || c == '\r' || c == '\n';
 }
 
+static const char *persona_name(agent_persona_t persona)
+{
+    switch (persona) {
+        case AGENT_PERSONA_FRIENDLY:
+            return "friendly";
+        case AGENT_PERSONA_TECHNICAL:
+            return "technical";
+        case AGENT_PERSONA_WITTY:
+            return "witty";
+        default:
+            return "neutral";
+    }
+}
+
+static const char *persona_instruction(agent_persona_t persona)
+{
+    switch (persona) {
+        case AGENT_PERSONA_FRIENDLY:
+            return "Use warm, approachable wording while staying concise.";
+        case AGENT_PERSONA_TECHNICAL:
+            return "Use precise technical language and concrete terminology.";
+        case AGENT_PERSONA_WITTY:
+            return "Use a lightly witty tone; at most one brief witty flourish per reply.";
+        default:
+            return "Use direct, plain wording.";
+    }
+}
+
+static bool parse_persona_name(const char *name, agent_persona_t *out)
+{
+    if (!name || !out) {
+        return false;
+    }
+
+    if (strcmp(name, "neutral") == 0) {
+        *out = AGENT_PERSONA_NEUTRAL;
+        return true;
+    }
+    if (strcmp(name, "friendly") == 0) {
+        *out = AGENT_PERSONA_FRIENDLY;
+        return true;
+    }
+    if (strcmp(name, "technical") == 0) {
+        *out = AGENT_PERSONA_TECHNICAL;
+        return true;
+    }
+    if (strcmp(name, "witty") == 0) {
+        *out = AGENT_PERSONA_WITTY;
+        return true;
+    }
+
+    return false;
+}
+
+#ifndef TEST_BUILD
+static bool persona_store_get(char *value, size_t max_len)
+{
+    return memory_get(NVS_KEY_PERSONA, value, max_len);
+}
+#else
+static bool persona_store_get(char *value, size_t max_len)
+{
+    if (!value || max_len == 0 || s_test_persona_value[0] == '\0') {
+        return false;
+    }
+    strncpy(value, s_test_persona_value, max_len - 1);
+    value[max_len - 1] = '\0';
+    return true;
+}
+#endif
+
+static void load_persona_from_store(void)
+{
+    char stored[32] = {0};
+    agent_persona_t parsed = AGENT_PERSONA_NEUTRAL;
+
+    s_persona = AGENT_PERSONA_NEUTRAL;
+    if (!persona_store_get(stored, sizeof(stored))) {
+        return;
+    }
+
+    for (size_t i = 0; stored[i] != '\0'; i++) {
+        stored[i] = (char)tolower((unsigned char)stored[i]);
+    }
+
+    if (!parse_persona_name(stored, &parsed)) {
+        ESP_LOGW(TAG, "Ignoring invalid stored persona '%s'", stored);
+        return;
+    }
+
+    s_persona = parsed;
+    ESP_LOGI(TAG, "Loaded persona: %s", persona_name(s_persona));
+}
+
+static const char *build_system_prompt(void)
+{
+    int written = snprintf(
+        s_system_prompt_buf,
+        sizeof(s_system_prompt_buf),
+        "%s Persona mode is '%s'. Persona affects wording only and must never change "
+        "tool choices, automation behavior, safety decisions, or policy handling. %s "
+        "Keep responses short unless the user explicitly asks for more detail.",
+        SYSTEM_PROMPT,
+        persona_name(s_persona),
+        persona_instruction(s_persona));
+
+    if (written < 0 || (size_t)written >= sizeof(s_system_prompt_buf)) {
+        ESP_LOGW(TAG, "Persona prompt composition overflow, using base system prompt");
+        return SYSTEM_PROMPT;
+    }
+
+    return s_system_prompt_buf;
+}
+
 static bool is_command(const char *message, const char *name)
 {
     if (!message || !name || name[0] == '\0') {
@@ -234,6 +365,8 @@ static void handle_start_command(void)
         "- i2c scan <sda> <scl>\n"
         "- schedule <periodic|daily|once> ...\n"
         "- memory list|get|set|del\n"
+        "- ask me to switch persona (neutral/friendly/technical/witty)\n"
+        "- ask me what persona is active\n"
         "\n"
         "Control Telegram command intake:\n"
         "- /help (show help)\n"
@@ -245,13 +378,16 @@ static void handle_start_command(void)
 
 static void handle_settings_command(void)
 {
-    char settings_text[256];
+    char settings_text[384];
     snprintf(settings_text, sizeof(settings_text),
              "zclaw settings:\n"
              "- Message intake: %s\n"
+             "- Persona: %s\n"
              "- Telegram commands: /start, /help, /settings, /stop, /resume\n"
+             "- Persona changes: ask in normal chat (handled via tool calls)\n"
              "- Device settings are global (e.g., timezone <name>)",
-             s_messages_paused ? "paused" : "active");
+             s_messages_paused ? "paused" : "active",
+             persona_name(s_persona));
     send_response(settings_text);
 }
 
@@ -362,7 +498,7 @@ static void process_message(const char *user_message)
 
         // Build request JSON (user message already in history)
         char *request = json_build_request(
-            SYSTEM_PROMPT,
+            build_system_prompt(),
             s_history,
             s_history_len,
             NULL,  // User message already in history
@@ -503,8 +639,22 @@ static void process_message(const char *user_message)
             } else {
                 // Built-in tool: execute directly
                 int64_t tool_started_us = esp_timer_get_time();
-                tools_execute(tool_name, tool_input, s_tool_result_buf, sizeof(s_tool_result_buf));
+                bool tool_ok = tools_execute(tool_name, tool_input,
+                                             s_tool_result_buf, sizeof(s_tool_result_buf));
                 metrics.tool_us_total += elapsed_us_since(tool_started_us);
+
+                // Keep runtime persona state aligned when persona tools run via LLM.
+                if (tool_ok && strcmp(tool_name, "set_persona") == 0) {
+                    cJSON *persona_json = cJSON_GetObjectItem(tool_input, "persona");
+                    agent_persona_t parsed_persona = AGENT_PERSONA_NEUTRAL;
+                    if (persona_json && cJSON_IsString(persona_json) &&
+                        parse_persona_name(persona_json->valuestring, &parsed_persona)) {
+                        s_persona = parsed_persona;
+                    }
+                } else if (tool_ok && strcmp(tool_name, "reset_persona") == 0) {
+                    s_persona = AGENT_PERSONA_NEUTRAL;
+                }
+
                 ESP_LOGI(TAG, "Tool result: %s", s_tool_result_buf);
             }
 
@@ -557,6 +707,8 @@ void agent_test_reset(void)
     s_last_non_command_response_us = 0;
     memset(s_last_non_command_text, 0, sizeof(s_last_non_command_text));
     s_messages_paused = false;
+    memset(s_test_persona_value, 0, sizeof(s_test_persona_value));
+    load_persona_from_store();
 }
 
 void agent_test_set_queues(QueueHandle_t channel_output_queue,
@@ -599,6 +751,7 @@ esp_err_t agent_start(QueueHandle_t input_queue,
     s_input_queue = input_queue;
     s_channel_output_queue = channel_output_queue;
     s_telegram_output_queue = telegram_output_queue;
+    load_persona_from_store();
 
     if (xTaskCreate(agent_task, "agent", AGENT_TASK_STACK_SIZE, NULL,
                     AGENT_TASK_PRIORITY, NULL) != pdPASS) {

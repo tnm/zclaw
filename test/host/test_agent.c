@@ -355,6 +355,84 @@ TEST(help_and_settings_commands_bypass_llm)
     return 0;
 }
 
+TEST(persona_phrases_route_through_llm)
+{
+    QueueHandle_t channel_q;
+    char text[CHANNEL_TX_BUF_SIZE];
+    const char *reply_one =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"handled by llm\"}],\"stop_reason\":\"end_turn\"}";
+    const char *reply_two =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"through llm again\"}],\"stop_reason\":\"end_turn\"}";
+    const char *last_request = NULL;
+
+    reset_state();
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    ASSERT(channel_q != NULL);
+    agent_test_set_queues(channel_q, NULL);
+
+    ASSERT(mock_llm_push_result(ESP_OK, reply_one));
+    agent_test_process_message("set persona witty");
+    ASSERT(mock_llm_request_count() == 1);
+    ASSERT(mock_tools_execute_calls() == 0);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "handled by llm");
+
+    last_request = mock_llm_last_request_json();
+    ASSERT(last_request != NULL);
+    ASSERT(strstr(last_request, "set persona witty") != NULL);
+
+    ASSERT(mock_llm_push_result(ESP_OK, reply_two));
+    agent_test_process_message("show persona");
+    ASSERT(mock_llm_request_count() == 2);
+    ASSERT(mock_tools_execute_calls() == 0);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "through llm again");
+
+    last_request = mock_llm_last_request_json();
+    ASSERT(last_request != NULL);
+    ASSERT(strstr(last_request, "show persona") != NULL);
+
+    vQueueDelete(channel_q);
+    return 0;
+}
+
+TEST(persona_can_change_via_llm_tool_call)
+{
+    QueueHandle_t channel_q;
+    char text[CHANNEL_TX_BUF_SIZE];
+    const char *tool_call =
+        "{\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_persona_1\","
+        "\"name\":\"set_persona\",\"input\":{\"persona\":\"friendly\"}}],"
+        "\"stop_reason\":\"tool_use\"}";
+    const char *final_text =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"persona changed\"}],\"stop_reason\":\"end_turn\"}";
+    const char *last_request = NULL;
+
+    reset_state();
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    ASSERT(channel_q != NULL);
+    agent_test_set_queues(channel_q, NULL);
+
+    ASSERT(mock_llm_push_result(ESP_OK, tool_call));
+    ASSERT(mock_llm_push_result(ESP_OK, final_text));
+
+    agent_test_process_message("please switch your personality to friendly");
+
+    ASSERT(mock_llm_request_count() == 2);
+    ASSERT(mock_tools_execute_calls() == 1);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "persona changed");
+
+    last_request = mock_llm_last_request_json();
+    ASSERT(last_request != NULL);
+    ASSERT(strstr(last_request, "Persona mode is 'friendly'") != NULL);
+
+    vQueueDelete(channel_q);
+    return 0;
+}
+
 TEST(repeated_non_command_is_suppressed)
 {
     QueueHandle_t channel_q;
@@ -482,6 +560,20 @@ int test_agent_all(void)
 
     printf("  help_and_settings_commands_bypass_llm... ");
     if (test_help_and_settings_commands_bypass_llm() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  persona_phrases_route_through_llm... ");
+    if (test_persona_phrases_route_through_llm() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  persona_can_change_via_llm_tool_call... ");
+    if (test_persona_can_change_via_llm_tool_call() == 0) {
         printf("OK\n");
     } else {
         failures++;

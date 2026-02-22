@@ -101,13 +101,32 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
         </section>
 
         <section class="section">
+          <h2>Telegram Path</h2>
+          <ol>
+            <li>Create bot via <a href="https://t.me/botfather">@BotFather</a>.</li>
+            <li>Get chat ID via <a href="https://t.me/userinfobot">@userinfobot</a>.</li>
+            <li>Provide Telegram credentials during provisioning: use <code>--tg-token</code> and <code>--tg-chat-id</code> for non-interactive runs, or enter them when prompted in interactive provisioning.</li>
+          </ol>
+          <p>Runtime accepts messages only from the configured chat ID.</p>
+          <p class="inline-note">Telegram control commands: <code>/start</code>/<code>/help</code> (help), <code>/settings</code> (status), <code>/stop</code> (pause message intake), <code>/resume</code> (resume message intake).</p>
+          <p class="inline-note">If old queued messages keep replaying during local dev, run <code>./scripts/telegram-clear-backlog.sh --show-config</code> once on your host.</p>
+        </section>
+
+        <section class="section">
           <h2>First Conversation</h2>
           <p>Talk to zclaw in normal language. You do not need command syntax.</p>
-          <pre>turn GPIO 4 on
-what are all GPIO states
+          <pre>what are all GPIO states
+turn GPIO 5 on
 remind me daily at 8:15 to water plants
 remember that GPIO 4 controls the arcade machine
-create a tool called arcade_on that turns GPIO 4 on</pre>
+create a tool called arcade_on that turns GPIO 4 on
+turn the arcade on in 10 minutes</pre>
+          <p class="inline-note">Example flow:</p>
+          <pre>You: create a tool called arcade_on that turns GPIO 4 on
+zclaw: Created tool "arcade_on". Say "run arcade_on" anytime.
+
+You: turn the arcade on in 10 minutes
+zclaw: Scheduled it. I will run arcade_on once in 10 minutes.</pre>
           <p>Persona options are <code>neutral</code>, <code>friendly</code>, <code>technical</code>, and <code>witty</code>.</p>
           <pre>switch to witty persona
 what persona are you using</pre>
@@ -123,18 +142,6 @@ what persona are you using</pre>
 ./scripts/provision-dev.sh --show-config
 ./scripts/provision-dev.sh</pre>
           <p class="inline-note">This keeps your WiFi/API/Telegram values in a local profile for repeat dev flashes. Output is redacted; only Telegram bot ID is shown as a safe identifier.</p>
-        </section>
-
-        <section class="section">
-          <h2>Telegram Path</h2>
-          <ol>
-            <li>Create bot via <a href="https://t.me/botfather">@BotFather</a>.</li>
-            <li>Get chat ID via <a href="https://t.me/userinfobot">@userinfobot</a>.</li>
-            <li>Set <code>--tg-token</code> and <code>--tg-chat-id</code> in provisioning.</li>
-          </ol>
-          <p>Runtime accepts messages only from the configured chat ID.</p>
-          <p class="inline-note">Telegram control commands: <code>/start</code>/<code>/help</code> (help), <code>/settings</code> (status), <code>/stop</code> (pause message intake), <code>/resume</code> (resume message intake).</p>
-          <p class="inline-note">If old queued messages keep replaying during local dev, run <code>./scripts/telegram-clear-backlog.sh --show-config</code> once on your host.</p>
         </section>
 
         <section class="section">

@@ -264,6 +264,7 @@ static void process_message(const char *user_message)
 {
     ESP_LOGI(TAG, "Processing: %s", user_message);
     int history_turn_start = s_history_len;
+    bool is_non_command_message = !is_slash_command(user_message);
     request_metrics_t metrics = {
         .started_us = esp_timer_get_time(),
         .llm_us_total = 0,
@@ -330,7 +331,7 @@ static void process_message(const char *user_message)
         return;
     }
 
-    if (!is_slash_command(user_message)) {
+    if (is_non_command_message) {
         int64_t now_us = esp_timer_get_time();
         uint64_t since_last_ms = 0;
 
@@ -347,10 +348,6 @@ static void process_message(const char *user_message)
             metrics_log_request(&metrics, "replay_suppressed");
             return;
         }
-
-        strncpy(s_last_non_command_text, user_message, sizeof(s_last_non_command_text) - 1);
-        s_last_non_command_text[sizeof(s_last_non_command_text) - 1] = '\0';
-        s_last_non_command_response_us = now_us;
     }
 
     // Get tools
@@ -509,6 +506,12 @@ static void process_message(const char *user_message)
         send_response("(Reached max tool iterations)");
         metrics_log_request(&metrics, "max_rounds");
         return;
+    }
+
+    if (is_non_command_message) {
+        strncpy(s_last_non_command_text, user_message, sizeof(s_last_non_command_text) - 1);
+        s_last_non_command_text[sizeof(s_last_non_command_text) - 1] = '\0';
+        s_last_non_command_response_us = esp_timer_get_time();
     }
 
     metrics_log_request(&metrics, "success");

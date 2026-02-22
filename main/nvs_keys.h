@@ -15,5 +15,6 @@
 // Rate-limit bookkeeping keys.
 #define NVS_KEY_RL_DAILY     "rl_daily"
 #define NVS_KEY_RL_DAY       "rl_day"
+#define NVS_KEY_RL_YEAR      "rl_year"
 
 #endif // NVS_KEYS_H

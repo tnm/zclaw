@@ -387,6 +387,41 @@ TEST(repeated_non_command_is_suppressed)
     return 0;
 }
 
+TEST(repeated_non_command_not_suppressed_after_failure)
+{
+    QueueHandle_t channel_q;
+    char text[CHANNEL_TX_BUF_SIZE];
+    const char *success =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"recovered\"}],\"stop_reason\":\"end_turn\"}";
+
+    reset_state();
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    ASSERT(channel_q != NULL);
+    agent_test_set_queues(channel_q, NULL);
+
+    ASSERT(mock_llm_push_result(ESP_FAIL, NULL));
+    ASSERT(mock_llm_push_result(ESP_FAIL, NULL));
+    ASSERT(mock_llm_push_result(ESP_FAIL, NULL));
+    ASSERT(mock_llm_push_result(ESP_OK, success));
+
+    agent_test_process_message("retry this");
+    ASSERT(mock_llm_request_count() == 3);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "Error: Failed to contact LLM API after retries");
+    ASSERT(mock_ratelimit_record_count() == 0);
+
+    // The same message should be allowed immediately after a failed turn.
+    agent_test_process_message("retry this");
+    ASSERT(mock_llm_request_count() == 4);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "recovered");
+    ASSERT(mock_ratelimit_record_count() == 1);
+
+    vQueueDelete(channel_q);
+    return 0;
+}
+
 int test_agent_all(void)
 {
     int failures = 0;
@@ -451,6 +486,13 @@ int test_agent_all(void)
 
     printf("  repeated_non_command_is_suppressed... ");
     if (test_repeated_non_command_is_suppressed() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  repeated_non_command_not_suppressed_after_failure... ");
+    if (test_repeated_non_command_not_suppressed_after_failure() == 0) {
         printf("OK\n");
     } else {
         failures++;

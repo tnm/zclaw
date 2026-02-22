@@ -35,6 +35,16 @@ CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
 CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=8
 CONFIG_ESP_WIFI_TX_BUFFER_TYPE=0
 CONFIG_ESP_WIFI_STATIC_TX_BUFFER_NUM=4
+# Keep STA/WPA2 path lean on default build target to stay within firmware budget.
+# CONFIG_ESP_WIFI_ENABLE_WPA3_SAE is not set
+# CONFIG_ESP_WIFI_ENABLE_SAE_PK is not set
+# CONFIG_ESP_WIFI_SOFTAP_SAE_SUPPORT is not set
+# CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA is not set
+# CONFIG_ESP_WIFI_ENTERPRISE_SUPPORT is not set
+
+# TCP/IP stack (unused optional features disabled for size)
+# CONFIG_LWIP_IPV6 is not set
+# CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES is not set
 
 # Watchdog - longer timeout for API calls
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=60

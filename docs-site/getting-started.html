@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Getting Started">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Getting Started">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Getting Started</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 1</p>
+          <h1 class="page-title">Getting Started</h1>
+          <p class="deck">Fast path from blank machine to a live ESP32 agent. Defaults are safe, and explicit flags keep runs repeatable.</p>
+        </header>
+
+        <section class="section">
+          <h2>Basic Hardware</h2>
+          <ul>
+            <li>Tested targets: <strong>ESP32-C3</strong>, <strong>ESP32-S3</strong>, and <strong>ESP32-C6</strong>.</li>
+            <li>Recommended starter board: Seeed XIAO ESP32-C3 (USB-C, small footprint, low cost).</li>
+            <li>Use a real data USB cable (not charge-only), then connect board to host.</li>
+            <li>zclaw's setup scripts will generally find the right serial port without you having to do anything.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>One-Line Bootstrap</h2>
+          <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap.sh)</pre>
+          <p>Optional checksum-verified bootstrap (same flow):</p>
+          <pre>ZCLAW_BOOTSTRAP_SHA256="&lt;sha256-from-release-notes&gt;" \
+bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap.sh)</pre>
+          <p class="inline-note">Integrity check: when <code>ZCLAW_BOOTSTRAP_SHA256</code> (or <code>--sha256</code>) is set, <code>bootstrap.sh</code> hashes its own downloaded contents with SHA-256 and compares to your expected value before it clones/updates or runs <code>./install.sh</code>. Any mismatch exits immediately.</p>
+          <p>Bootstrap clones or updates the repo, then runs <code>./install.sh</code>.</p>
+          <ul>
+            <li>Installer remembers answers in <code>~/.config/zclaw/install.env</code> (disable with <code>--no-remember</code>).</li>
+            <li>Interactive flashing defaults to standard mode; encrypted flashing is opt-in with <code>--flash-mode secure</code>.</li>
+          </ul>
+          <p class="inline-note">Want non-interactive install? Use <code>-y</code> and explicit no/yes flags: <code>./install.sh -y --build --flash --provision --no-qemu --no-cjson</code>.</p>
+        </section>
+
+        <section class="section">
+          <h2>Common Install Patterns</h2>
+          <pre># Interactive default path
+./install.sh
+
+# Non-interactive provisioning path
+./install.sh -y --build --flash --provision --monitor
+
+# Explicit secure flash mode
+./install.sh -y --build --flash --flash-mode secure</pre>
+        </section>
+
+        <section class="section">
+          <h2>First Boot Flow</h2>
+          <ol>
+            <li>Flash firmware (<code>./scripts/flash.sh</code> or <code>./scripts/flash-secure.sh</code>). Flash scripts auto-detect chip target and can prompt for <code>idf.py set-target &lt;chip&gt;</code> on mismatch.</li>
+            <li>Provision credentials (<code>./scripts/provision.sh --port &lt;serial-port&gt;</code>).</li>
+            <li>Enter WiFi SSID, LLM provider, and API key. Optional Telegram fields can be filled now or later.</li>
+            <li>Reboot and inspect logs with <code>./scripts/monitor.sh</code>.</li>
+          </ol>
+        </section>
+
+        <section class="section">
+          <h2>Fast Re-Provision (Local Dev)</h2>
+          <pre># One-time: create local profile template
+./scripts/provision-dev.sh --write-template
+
+# Edit ~/.config/zclaw/dev.env once, then:
+./scripts/provision-dev.sh --show-config
+./scripts/provision-dev.sh</pre>
+          <p class="inline-note">This keeps your WiFi/API/Telegram values in a local profile for repeat dev flashes. Output is redacted; only Telegram bot ID is shown as a safe identifier.</p>
+        </section>
+
+        <section class="section">
+          <h2>Telegram Path</h2>
+          <ol>
+            <li>Create bot via <a href="https://t.me/botfather">@BotFather</a>.</li>
+            <li>Get chat ID via <a href="https://t.me/userinfobot">@userinfobot</a>.</li>
+            <li>Set <code>--tg-token</code> and <code>--tg-chat-id</code> in provisioning.</li>
+          </ol>
+          <p>Runtime accepts messages only from the configured chat ID.</p>
+          <p class="inline-note">Telegram control commands: <code>/start</code>/<code>/help</code> (help), <code>/settings</code> (status), <code>/stop</code> (pause message intake), <code>/resume</code> (resume message intake).</p>
+          <p class="inline-note">If old queued messages keep replaying during local dev, run <code>./scripts/telegram-clear-backlog.sh --show-config</code> once on your host.</p>
+        </section>
+
+        <section class="section">
+          <h2>Web Relay Path</h2>
+          <pre># Device connected
+./scripts/web-relay.sh --serial-port /dev/cu.usbmodem1101 --host 0.0.0.0 --port 8787
+
+# No hardware (mock agent)
+./scripts/web-relay.sh --mock-agent --host 0.0.0.0 --port 8787</pre>
+          <p>Only one process should own the serial port at a time.</p>
+          <pre># No-clone bootstrap path
+bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap-web-relay.sh) -- --serial-port /dev/cu.usbmodem1101 --host 0.0.0.0 --port 8787</pre>
+        </section>
+
+        <section class="section">
+          <h2>Serial Port Conflicts</h2>
+          <pre># Release ESP-IDF monitor/holders
+./scripts/release-port.sh
+
+# Relay helper can stop monitor holders automatically
+./scripts/web-relay.sh --serial-port /dev/cu.usbmodem1101 --kill-monitor --host 0.0.0.0 --port 8787</pre>
+        </section>
+
+        <section class="section">
+          <h2>Reset / Erase</h2>
+          <pre># Erase only saved credentials/settings (keeps firmware)
+./scripts/erase.sh --nvs --port /dev/cu.usbmodem1101
+
+# Full factory wipe (firmware + settings)
+./scripts/erase.sh --all --port /dev/cu.usbmodem1101</pre>
+          <p class="inline-note">Guardrails: you must explicitly choose <code>--nvs</code> or <code>--all</code>. Full erase requires confirmation (or <code>--yes</code> in non-interactive runs).</p>
+        </section>
+
+        <section class="section">
+          <h2>Advanced Board Config</h2>
+          <pre>source ~/esp/esp-idf/export.sh
+idf.py menuconfig</pre>
+          <p>Adjust GPIO safety range/allowlist under <code>zclaw Configuration -&gt; GPIO Tool Safety</code>.</p>
+        </section>
+
+        <section class="section">
+          <h2>If Something Breaks</h2>
+          <pre># ESP-IDF repair
+cd ~/esp/esp-idf
+./install.sh esp32c3,esp32s3
+
+# Build/test routines
+./scripts/build.sh
+./scripts/test.sh host</pre>
+        </section>
+
+        <footer class="footer">
+          <p>Next chapter: <a href="tools.html">tool surface and schedule grammar</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

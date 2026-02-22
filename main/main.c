@@ -10,6 +10,7 @@
 #include "ota.h"
 #include "boot_guard.h"
 #include "nvs_keys.h"
+#include "messages.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -427,6 +428,9 @@ static bool wifi_connect_sta(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+    // Favor link stability for HTTPS-heavy workloads over power savings.
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
+    ESP_LOGI(TAG, "WiFi power save disabled");
 
     log_target_ap_scan(ssid);
     ESP_LOGI(TAG, "Connecting to %s...", ssid);
@@ -601,7 +605,7 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  zclaw v2.0");
+    ESP_LOGI(TAG, "  zclaw v%s", ota_get_version());
     ESP_LOGI(TAG, "  AI Agent on ESP32");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
@@ -645,8 +649,8 @@ void app_main(void)
     tools_init();
     channel_init();
 
-    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
-    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
+    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, sizeof(channel_msg_t));
+    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, sizeof(channel_output_msg_t));
     if (!input_queue || !channel_output_queue) {
         ESP_LOGE(TAG, "Failed to create emulator queues");
         esp_restart();
@@ -738,8 +742,8 @@ void app_main(void)
     channel_init();
 
     // 13. Create queues
-    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
-    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, CHANNEL_RX_BUF_SIZE);
+    QueueHandle_t input_queue = xQueueCreate(INPUT_QUEUE_LENGTH, sizeof(channel_msg_t));
+    QueueHandle_t channel_output_queue = xQueueCreate(OUTPUT_QUEUE_LENGTH, sizeof(channel_output_msg_t));
     QueueHandle_t telegram_output_queue = NULL;
 #if CONFIG_ZCLAW_STUB_TELEGRAM
     bool telegram_enabled = false;
@@ -747,7 +751,7 @@ void app_main(void)
     bool telegram_enabled = telegram_is_configured();
 #endif
     if (telegram_enabled) {
-        telegram_output_queue = xQueueCreate(TELEGRAM_OUTPUT_QUEUE_LENGTH, TELEGRAM_MAX_MSG_LEN);
+        telegram_output_queue = xQueueCreate(TELEGRAM_OUTPUT_QUEUE_LENGTH, sizeof(telegram_msg_t));
     }
 
     if (!input_queue || !channel_output_queue || (telegram_enabled && !telegram_output_queue)) {

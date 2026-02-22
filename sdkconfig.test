@@ -1,0 +1,5 @@
+# Device-test overlay used by ./scripts/test.sh device.
+# This keeps firmware test builds deterministic and independent of live services.
+
+CONFIG_ZCLAW_STUB_LLM=y
+CONFIG_ZCLAW_STUB_TELEGRAM=y

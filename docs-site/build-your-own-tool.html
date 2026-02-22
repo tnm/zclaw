@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Build Your Own Tool">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Build Your Own Tool">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Build Your Own Tool</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 5</p>
+          <h1 class="page-title">Build Your Own Tool</h1>
+          <p class="deck">Custom tools let you package recurring intent into reusable actions. They are natural-language macros, not new firmware code.</p>
+        </header>
+
+        <section class="section">
+          <h2>Mental Model</h2>
+          <p>A user tool stores a short action string. Later, when the model calls that tool, zclaw returns the action text and the model executes it with built-in tools.</p>
+          <pre>1) create_tool(name, description, action)
+2) Tool is saved in NVS
+3) Model calls tool by name
+4) Firmware returns: "Execute this action now: ..."
+5) Model performs gpio/memory/cron calls</pre>
+          <p class="inline-note">No dynamic code loading. You are shaping behavior through promptable intent.</p>
+        </section>
+
+        <section class="section">
+          <h2>Creation Contract</h2>
+          <table>
+            <thead>
+              <tr><th>Field</th><th>Rule</th><th>Notes</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>name</code></td><td>Alphanumeric + underscore only</td><td>No spaces or punctuation.</td></tr>
+              <tr><td><code>description</code></td><td>Short and explicit</td><td>Used by model selection logic.</td></tr>
+              <tr><td><code>action</code></td><td>Concrete imperative text</td><td>Should map cleanly to built-in tools.</td></tr>
+              <tr><td>capacity</td><td>Up to 8 user tools</td><td>Delete stale tools to free slots.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Authoring Workflow</h2>
+          <ol>
+            <li>Pick one job with clear start/end conditions.</li>
+            <li>Name it by intent: <code>water_plants</code>, <code>prep_night_mode</code>, <code>check_lab_sensor</code>.</li>
+            <li>Write action text as ordered steps the model can execute.</li>
+            <li>Create the tool in chat and immediately invoke it with a test prompt.</li>
+            <li>Adjust wording if the model takes unexpected paths.</li>
+          </ol>
+        </section>
+
+        <section class="section">
+          <h2>Concrete Examples</h2>
+          <pre>You: Create a tool named "water_plants".
+Description: Water plant zone A.
+Action: Set GPIO 5 high, wait 30000 milliseconds, then set GPIO 5 low.
+
+You: Run water_plants
+Agent: (calls tool) -> executes gpio_write + delay + gpio_write</pre>
+          <pre>You: Create tool "night_shutdown" to prepare lab for night.
+Action: Turn GPIO 7 low, remember u_last_shutdown=completed, and set a once schedule in 600 minutes to run morning_startup.</pre>
+        </section>
+
+        <section class="section">
+          <h2>Memory-Driven Tool Creation</h2>
+          <p>Tool creation gets stronger when zclaw already knows your hardware map from memory.</p>
+          <pre>You: Remember that GPIO 5 controls the office lighting.
+Agent: Stored as memory key (for example: u_office_lighting_pin=5)
+
+Later...
+
+You: Build a tool to control the lights.
+Agent: Creates a tool using the remembered lighting pin instead of asking you to restate wiring.</pre>
+          <p class="inline-note">Pattern: teach wiring once with memory, then create higher-level tools in plain language.</p>
+        </section>
+
+        <section class="section">
+          <h2>Validation Checklist</h2>
+          <ul>
+            <li>Does the action text reference only supported built-in capabilities?</li>
+            <li>Are durations explicit in milliseconds/minutes (avoid vague words like "later")?</li>
+            <li>Does it avoid unsafe GPIO pins per your board policy? (The agent will generally prevent this anyway.)</li>
+            <li>Can the outcome be observed via <code>gpio_read</code>, <code>memory_get</code>, or <code>cron_list</code>?</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Versioning and Retirement</h2>
+          <p>Treat tool names like API contracts. If behavior changes meaningfully, create a new name and migrate callers.</p>
+          <pre># Discover current tools
+list_user_tools
+
+# Remove stale tool
+delete_user_tool(name="night_shutdown_v1")</pre>
+          <p class="inline-note">Pattern: append a version suffix only when compatibility breaks (<code>_v2</code>, <code>_v3</code>).</p>
+        </section>
+
+        <section class="section">
+          <h2>Failure Modes To Watch</h2>
+          <ul>
+            <li>Overly broad actions that invite hallucinated extra steps.</li>
+            <li>Tool names that overlap semantically and confuse model choice.</li>
+            <li>Implicit assumptions about hardware state (pin mode, sensor presence, wiring).</li>
+            <li>Long multi-domain macros that should be split into smaller tools.</li>
+          </ul>
+        </section>
+
+        <footer class="footer">
+          <p>Next chapter: <a href="local-dev.html">local development and hacking workflow</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

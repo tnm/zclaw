@@ -15,6 +15,7 @@ TG_TOKEN=""
 TG_CHAT_ID=""
 ASSUME_YES=false
 VERIFY_API_KEY=true
+PRINT_DETECTED_SSID=false
 
 usage() {
     cat << EOF
@@ -31,6 +32,7 @@ Options:
   --tg-chat-id <id>         Telegram chat ID (optional)
   --yes                     Non-interactive (requires --api-key; SSID auto-detect if possible)
   --skip-api-check          Skip live API key verification step
+  --print-detected-ssid     Print detected host WiFi SSID and exit (test/troubleshooting helper)
   -h, --help                Show help
 EOF
 }
@@ -77,6 +79,16 @@ normalize_serial_port() {
     echo "$port"
 }
 
+is_placeholder_ssid() {
+    local ssid="$1"
+    case "$ssid" in
+        "<redacted>"|"<hidden>"|"[hidden]"|"***")
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 select_serial_port() {
     local candidates=()
     local p
@@ -121,8 +133,10 @@ detect_host_wifi_ssid() {
     local ssid=""
 
     if [ -n "${ZCLAW_WIFI_SSID:-}" ]; then
-        echo "$ZCLAW_WIFI_SSID"
-        return 0
+        if ! is_placeholder_ssid "$ZCLAW_WIFI_SSID"; then
+            echo "$ZCLAW_WIFI_SSID"
+            return 0
+        fi
     fi
 
     case "$(uname -s)" in
@@ -130,7 +144,7 @@ detect_host_wifi_ssid() {
             # Deprecated, but still present on current macOS and often the most direct.
             if [ -x "/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport" ]; then
                 ssid="$(/System/Library/PrivateFrameworks/Apple80211.framework/Versions/Current/Resources/airport -I 2>/dev/null | sed -nE 's/^[[:space:]]*SSID:[[:space:]]*(.+)$/\1/p' | head -1)"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
@@ -149,7 +163,7 @@ detect_host_wifi_ssid() {
                     }
                     in_block && /^$/ {in_block=0}
                 ' | head -1)"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
@@ -160,7 +174,7 @@ detect_host_wifi_ssid() {
                 while IFS= read -r dev; do
                     [ -n "$dev" ] || continue
                     ssid="$(networksetup -getairportnetwork "$dev" 2>/dev/null | sed -nE 's/^Current Wi-Fi Network: (.*)$/\1/p')"
-                    if [ -n "$ssid" ]; then
+                    if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                         echo "$ssid"
                         return 0
                     fi
@@ -175,14 +189,14 @@ detect_host_wifi_ssid() {
         Linux)
             if command -v nmcli >/dev/null 2>&1; then
                 ssid="$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes" {print $2; exit}')"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
             fi
             if command -v iwgetid >/dev/null 2>&1; then
                 ssid="$(iwgetid -r 2>/dev/null || true)"
-                if [ -n "$ssid" ]; then
+                if [ -n "$ssid" ] && ! is_placeholder_ssid "$ssid"; then
                     echo "$ssid"
                     return 0
                 fi
@@ -403,6 +417,124 @@ PY
     return 1
 }
 
+verify_openai_api_key() {
+    local api_key="$1"
+    local api_url="${OPENAI_API_URL:-https://api.openai.com/v1/models}"
+    local response_file
+    local http_code
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "Warning: curl not found; skipping OpenAI API check."
+        return 2
+    fi
+
+    response_file="$(mktemp -t zclaw-openai-check.XXXXXX 2>/dev/null || mktemp)"
+    if ! http_code="$(curl -sS -o "$response_file" -w "%{http_code}" \
+        -H "authorization: Bearer $api_key" \
+        "$api_url")"; then
+        rm -f "$response_file"
+        echo "OpenAI API check failed: network/transport error."
+        return 1
+    fi
+
+    if [ "$http_code" = "200" ]; then
+        rm -f "$response_file"
+        echo "OpenAI API check passed (models endpoint reachable)."
+        return 0
+    fi
+
+    echo "OpenAI API check failed (HTTP $http_code)."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$response_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+p = Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    print("Response preview: " + p.read_text(encoding="utf-8", errors="ignore")[:200])
+    raise SystemExit(0)
+
+msg = ""
+if isinstance(data, dict):
+    if isinstance(data.get("error"), dict):
+        msg = data["error"].get("message") or data["error"].get("type") or ""
+    elif isinstance(data.get("error"), str):
+        msg = data["error"]
+if msg:
+    print("API said: " + msg)
+PY
+    else
+        echo "Response preview: $(head -c 200 "$response_file")"
+    fi
+
+    rm -f "$response_file"
+    return 1
+}
+
+verify_openrouter_api_key() {
+    local api_key="$1"
+    local api_url="${OPENROUTER_API_URL:-https://openrouter.ai/api/v1/models}"
+    local response_file
+    local http_code
+    local referer="${OPENROUTER_HTTP_REFERER:-https://github.com/tnm/zclaw}"
+    local title="${OPENROUTER_APP_TITLE:-zclaw}"
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "Warning: curl not found; skipping OpenRouter API check."
+        return 2
+    fi
+
+    response_file="$(mktemp -t zclaw-openrouter-check.XXXXXX 2>/dev/null || mktemp)"
+    if ! http_code="$(curl -sS -o "$response_file" -w "%{http_code}" \
+        -H "authorization: Bearer $api_key" \
+        -H "HTTP-Referer: $referer" \
+        -H "X-Title: $title" \
+        "$api_url")"; then
+        rm -f "$response_file"
+        echo "OpenRouter API check failed: network/transport error."
+        return 1
+    fi
+
+    if [ "$http_code" = "200" ]; then
+        rm -f "$response_file"
+        echo "OpenRouter API check passed (models endpoint reachable)."
+        return 0
+    fi
+
+    echo "OpenRouter API check failed (HTTP $http_code)."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$response_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+p = Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    print("Response preview: " + p.read_text(encoding="utf-8", errors="ignore")[:200])
+    raise SystemExit(0)
+
+msg = ""
+if isinstance(data, dict):
+    if isinstance(data.get("error"), dict):
+        msg = data["error"].get("message") or data["error"].get("type") or ""
+    elif isinstance(data.get("error"), str):
+        msg = data["error"]
+if msg:
+    print("API said: " + msg)
+PY
+    else
+        echo "Response preview: $(head -c 200 "$response_file")"
+    fi
+
+    rm -f "$response_file"
+    return 1
+}
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --port)
@@ -475,6 +607,9 @@ while [ $# -gt 0 ]; do
         --skip-api-check)
             VERIFY_API_KEY=false
             ;;
+        --print-detected-ssid)
+            PRINT_DETECTED_SSID=true
+            ;;
         -h|--help)
             usage
             exit 0
@@ -487,6 +622,14 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+
+if [ "$PRINT_DETECTED_SSID" = true ]; then
+    DETECTED_SSID="$(detect_host_wifi_ssid || true)"
+    if [ -n "$DETECTED_SSID" ]; then
+        echo "$DETECTED_SSID"
+    fi
+    exit 0
+fi
 
 source_idf_env || exit 1
 
@@ -572,39 +715,58 @@ if [ -z "$API_KEY" ]; then
     exit 1
 fi
 
-if [ "$VERIFY_API_KEY" = true ] && [ "$BACKEND" = "anthropic" ]; then
-    echo ""
-    while true; do
-        echo "Verifying Anthropic API key with a quick hello request..."
-        if verify_anthropic_api_key "$API_KEY" "$MODEL"; then
-            break
-        fi
+if [ "$VERIFY_API_KEY" = true ]; then
+    VERIFY_LABEL=""
+    VERIFY_FN=""
+    case "$BACKEND" in
+        anthropic)
+            VERIFY_LABEL="Anthropic"
+            VERIFY_FN="verify_anthropic_api_key"
+            ;;
+        openai)
+            VERIFY_LABEL="OpenAI"
+            VERIFY_FN="verify_openai_api_key"
+            ;;
+        openrouter)
+            VERIFY_LABEL="OpenRouter"
+            VERIFY_FN="verify_openrouter_api_key"
+            ;;
+    esac
 
-        if [ "$ASSUME_YES" = true ]; then
-            echo "Error: API check failed in --yes mode."
-            echo "Use --skip-api-check to bypass."
-            exit 1
-        fi
-
+    if [ -n "$VERIFY_FN" ]; then
         echo ""
-        read -r -p "Re-enter API key and retry? [Y/n] " retry_key
-        retry_key="${retry_key:-Y}"
-        if [[ "$retry_key" =~ ^[Yy]$ ]]; then
-            read -r -p "LLM API key (input is visible): " API_KEY
-            if [ -z "$API_KEY" ]; then
-                echo "API key is required."
+        while true; do
+            echo "Verifying ${VERIFY_LABEL} API key with a quick connectivity check..."
+            if "$VERIFY_FN" "$API_KEY" "$MODEL"; then
+                break
             fi
-            continue
-        fi
 
-        read -r -p "Continue provisioning anyway? [y/N] " continue_anyway
-        if [[ "$continue_anyway" =~ ^[Yy]$ ]]; then
-            break
-        fi
+            if [ "$ASSUME_YES" = true ]; then
+                echo "Error: API check failed in --yes mode."
+                echo "Use --skip-api-check to bypass."
+                exit 1
+            fi
 
-        echo "Aborted."
-        exit 1
-    done
+            echo ""
+            read -r -p "Re-enter API key and retry? [Y/n] " retry_key
+            retry_key="${retry_key:-Y}"
+            if [[ "$retry_key" =~ ^[Yy]$ ]]; then
+                read -r -p "LLM API key (input is visible): " API_KEY
+                if [ -z "$API_KEY" ]; then
+                    echo "API key is required."
+                fi
+                continue
+            fi
+
+            read -r -p "Continue provisioning anyway? [y/N] " continue_anyway
+            if [[ "$continue_anyway" =~ ^[Yy]$ ]]; then
+                break
+            fi
+
+            echo "Aborted."
+            exit 1
+        done
+    fi
 fi
 
 if [ "$ASSUME_YES" != true ] && [ -z "$WIFI_PASS" ]; then
@@ -700,3 +862,8 @@ echo "  1) Board reset is automatic after provisioning"
 echo "     If it does not boot, reset or power-cycle manually"
 echo "  2) Run ./scripts/monitor.sh $PORT"
 echo "  3) Wait for WiFi connected + Ready logs"
+echo "     Look for startup marker:"
+echo "       I (...) main: ========================================"
+echo "       I (...) main:   Ready! Free heap: <bytes> bytes"
+echo "       I (...) main: ========================================"
+echo "  4) Run ./scripts/web-relay.sh and send a test message to confirm end-to-end chat"

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Local Dev &amp; Hacking">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Local Dev &amp; Hacking">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Local Dev &amp; Hacking</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 6</p>
+          <h1 class="page-title">Local Dev &amp; Hacking</h1>
+          <p class="deck">Fast iteration flow for firmware, provisioning, and debugging without re-entering credentials every run.</p>
+        </header>
+
+        <section class="section">
+          <h2>Core Local Loop</h2>
+          <pre># 1) Build
+./scripts/build.sh
+
+# 2) Flash (keeps NVS by default)
+./scripts/flash.sh
+
+# 3) Re-provision quickly from local profile
+./scripts/provision-dev.sh
+
+# 4) Watch logs
+./scripts/monitor.sh</pre>
+          <p class="inline-note">Normal flashing does not erase NVS, so WiFi/API/Telegram credentials stay intact unless you explicitly wipe.</p>
+        </section>
+
+        <section class="section">
+          <h2>Profile-Based Provisioning</h2>
+          <pre># One-time template
+./scripts/provision-dev.sh --write-template
+
+# Edit ~/.config/zclaw/dev.env once, then:
+./scripts/provision-dev.sh --show-config
+./scripts/provision-dev.sh</pre>
+          <p><code>provision-dev.sh</code> wraps <code>provision.sh --yes</code>, reads your local profile, and redacts secrets in output.</p>
+          <ul>
+            <li>Shows Telegram bot ID (safe identifier), not full token.</li>
+            <li>Supports backend-specific env fallback: <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>OPENROUTER_API_KEY</code>.</li>
+            <li>Allows ad-hoc overrides: <code>--port</code>, <code>--ssid</code>, <code>--backend</code>, <code>--model</code>, etc.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Reset Flows</h2>
+          <pre># Wipe credentials/settings only (keep firmware)
+./scripts/erase.sh --nvs --port /dev/cu.usbmodem1101
+./scripts/provision-dev.sh --port /dev/cu.usbmodem1101
+
+# Full factory wipe (firmware + settings)
+./scripts/erase.sh --all --port /dev/cu.usbmodem1101
+./scripts/flash.sh /dev/cu.usbmodem1101
+./scripts/provision-dev.sh --port /dev/cu.usbmodem1101</pre>
+          <p class="inline-note">Guardrails are intentional: full erase requires explicit confirmation or <code>--yes</code> in scripted/non-interactive runs.</p>
+        </section>
+
+        <section class="section">
+          <h2>Key Tooling</h2>
+          <table>
+            <thead>
+              <tr><th>Command</th><th>Use</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>./scripts/test.sh host</code></td><td>Primary local safety net (C host tests + Python script tests).</td></tr>
+              <tr><td><code>./scripts/check-binary-size.sh ...</code></td><td>Enforce firmware size guard (888 KiB cap).</td></tr>
+              <tr><td><code>./scripts/benchmark.sh --mode serial|relay</code></td><td>Latency checks and round-trip timing.</td></tr>
+              <tr><td><code>./scripts/web-relay.sh ...</code></td><td>Phone-friendly chat UI via host relay for manual testing.</td></tr>
+              <tr><td><code>./scripts/release-port.sh</code></td><td>Clear stale serial holders when monitor/relay clashes.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Debugging Tips</h2>
+          <ul>
+            <li>If serial operations fail with busy port, stop monitor/relay or run <code>./scripts/release-port.sh</code>.</li>
+            <li>If Telegram behaves oddly, verify startup logs for <code>Loaded bot ID: ... (safe identifier)</code> and chat ID.</li>
+            <li>If Telegram keeps replaying stale messages, run <code>./scripts/telegram-clear-backlog.sh --show-config</code> once.</li>
+            <li>If you changed only runtime credentials, skip rebuild/flash and run <code>./scripts/provision-dev.sh</code> directly.</li>
+            <li>Use <code>./scripts/provision-dev.sh --show-config --dry-run</code> before scripted runs to inspect resolved values safely.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Typical Hacking Session</h2>
+          <pre># code edit
+./scripts/test.sh host
+./scripts/build.sh
+./scripts/flash.sh --kill-monitor /dev/cu.usbmodem1101
+./scripts/provision-dev.sh --port /dev/cu.usbmodem1101
+./scripts/monitor.sh /dev/cu.usbmodem1101</pre>
+        </section>
+
+        <footer class="footer">
+          <p>Return to <a href="index.html">chapter overview</a> or continue with <a href="tools.html">tool surface</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

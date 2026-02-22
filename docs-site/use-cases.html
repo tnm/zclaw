@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Use Cases">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Use Cases">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Use Cases</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 7</p>
+          <h1 class="page-title">Use Cases: Useful + Fun</h1>
+          <p class="deck">zclaw is most compelling when language, memory, schedule, and GPIO live in one tiny device. This chapter answers the practical "why use this?" question.</p>
+        </header>
+
+        <section class="section">
+          <h2>Why This Feels Different</h2>
+          <p>Most assistants can chat. zclaw can chat and directly do things with pins, stored state, and local schedules in the same runtime. You are operating hardware.</p>
+          <ul>
+            <li>It keeps persistent values in device storage (NVS) across reboots.</li>
+            <li>It can drive GPIO and run scheduled actions without another automation server.</li>
+            <li>It can blend free-form language with deterministic tools and schemas.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Useful Use Cases</h2>
+          <table>
+            <thead>
+              <tr><th>Use Case</th><th>What zclaw Does</th><th>Why On-Device Matters</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Lab bring-up checklist</td><td>Runs a staged startup script: set GPIO rails, wait, verify sensor pins, report health.</td><td>One chat command can control real sequencing and report exact current state.</td></tr>
+              <tr><td>Greenhouse helper</td><td>Schedules watering, stores moisture notes, toggles relays, and reports timing.</td><td>State and schedules persist locally; no separate home-automation hub required.</td></tr>
+              <tr><td>Workshop routine assistant</td><td>Starts timed reminders for recurring bench tasks and equipment checks.</td><td>Reminders and actions are tied to the same device that controls outputs.</td></tr>
+              <tr><td>Field test rig assistant</td><td>Creates one-shot test routines, logs outcomes in memory keys, and replays known-good actions.</td><td>Useful when you need repeatable actions from natural language while standing at hardware.</td></tr>
+              <tr><td>Power/load cycling</td><td>Switches circuits with delay windows and periodic checks, then summarizes what happened.</td><td>Low-friction orchestration where command, execution, and telemetry live together.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Fun Use Cases</h2>
+          <ul>
+            <li><strong>Desk rituals:</strong> "At 9:00 weekdays, pulse the lamp and send me a one-line agenda nudge."</li>
+            <li><strong>Game night mode:</strong> map a "dramatic lights" tool that runs a timed GPIO scene for board games.</li>
+            <li><strong>Build celebration:</strong> after successful firmware flash, blink a victory pattern and store <code>u_last_win</code>.</li>
+            <li><strong>Tiny theater:</strong> "Tell me a short status joke and blink pin 5 twice if heap is healthy."</li>
+            <li><strong>Ambient companion:</strong> tone/persona changes plus simple physical responses make it feel alive.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Unique Because It Runs Here</h2>
+          <p>zclaw is interesting because it is constrained and embodied:</p>
+          <ul>
+            <li><strong>Embodied:</strong> it can immediately reach hardware through GPIO/I2C. It can go around with you.</li>
+            <li><strong>Stateful:</strong> memory keys and persona stay on the device</li>
+            <li><strong>Schedulable:</strong> natural language can produce persistent timed behavior.</li>
+            <li><strong>Inspectable:</strong> logs and built-in health/version tools make behavior debuggable.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Limits Are Part Of The Appeal</h2>
+          <p>The limits are a feature: on this build, zclaw runs with well under 200KB free heap at startup and tighter headroom under load, plus an 888 KiB firmware target. That keeps the assistant concise, explicit, and practical.</p>
+          <ul>
+            <li>Tool schemas keep behavior grounded in clear actions.</li>
+            <li>Small budgets discourage bloated responses and over-engineered flows.</li>
+            <li>A tiny, auditable stack is often easier to trust in daily automation.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Prompts To Try First</h2>
+          <pre>"Create a once schedule in 15 minutes to turn GPIO 5 off and confirm."
+"Remember that GPIO 4 is my door sensor, then tell me current health."
+"Set persona to witty, then explain what tasks are scheduled today."
+"Create a tool called bench_shutdown that powers down relay pins in order."
+"At 8:15 every day, remind me to check the plants and blink the status LED."</pre>
+        </section>
+
+        <footer class="footer">
+          <p>Back to <a href="index.html">chapter overview</a> or jump to <a href="build-your-own-tool.html">custom tool design</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

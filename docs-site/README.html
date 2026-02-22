@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | README">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | README">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | README</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <style>
+      :root {
+        --bg: #f6f8fa;
+        --fg: #24292f;
+        --muted: #57606a;
+        --line: #d0d7de;
+        --panel: #ffffff;
+        --code-bg: #f6f8fa;
+        --accent: #0969da;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0d1117;
+          --fg: #e6edf3;
+          --muted: #9ca3af;
+          --line: #30363d;
+          --panel: #161b22;
+          --code-bg: #0d1117;
+          --accent: #58a6ff;
+        }
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+
+      .wrap {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+      }
+
+      .article {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 28px;
+      }
+
+      .kicker {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      h1, h2 {
+        line-height: 1.25;
+        margin-top: 28px;
+        margin-bottom: 16px;
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 40px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 12px;
+      }
+
+      h2 {
+        font-size: 28px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 8px;
+      }
+
+      p { margin: 0 0 14px; }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      a:hover { text-decoration: underline; }
+
+      ul {
+        margin: 0 0 16px 20px;
+        padding: 0;
+      }
+
+      li { margin: 6px 0; }
+
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0.15em 0.35em;
+        font-size: 0.92em;
+      }
+
+      pre {
+        margin: 0 0 16px;
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        overflow-x: auto;
+      }
+
+      pre code {
+        background: transparent;
+        border: 0;
+        padding: 0;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1fr 220px;
+        gap: 18px;
+        align-items: start;
+      }
+
+      .hero img {
+        width: 100%;
+        height: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0 0 16px;
+      }
+
+      th, td {
+        border: 1px solid var(--line);
+        padding: 8px 10px;
+        vertical-align: top;
+      }
+
+      th {
+        text-align: left;
+        background: var(--code-bg);
+      }
+
+      .footer {
+        margin-top: 28px;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      @media (max-width: 800px) {
+        .article { padding: 20px 16px; }
+        h1 { font-size: 34px; }
+        h2 { font-size: 24px; }
+        .hero { grid-template-columns: 1fr; }
+        .hero img { max-width: 280px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <article class="article">
+        <p class="kicker">README</p>
+        <h1>zclaw</h1>
+
+        <section class="hero">
+          <div>
+            <p>The smallest possible AI personal assistant for ESP32.</p>
+            <p>zclaw is written in C and runs on ESP32 boards with a strict firmware budget target of <strong>&lt;= 888 KiB</strong> on the default build. It supports scheduled tasks, GPIO control, persistent memory, and custom tool composition through natural language.</p>
+            <p>The <strong>888 KiB</strong> target is all-in firmware size, not just app logic. It includes zclaw code plus ESP-IDF/FreeRTOS runtime, Wi-Fi/networking, TLS/crypto, and cert bundle overhead.</p>
+            <p>Fun to use, fun to hack on.</p>
+          </div>
+          <img src="images/lobster_xiao_cropped_left.png" alt="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+        </section>
+
+        <p>Current default <code>esp32s3</code> breakdown (<code>idf.py -B build size-components</code>, flash totals):</p>
+        <table>
+          <thead>
+            <tr><th>Layer</th><th>Size</th><th>Share</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>zclaw app logic (<code>libmain.a</code>)</td><td>26,430 bytes (~25.8 KiB)</td><td>~3.1%</td></tr>
+            <tr><td>Wi-Fi + networking stack</td><td>375,278 bytes (~366.5 KiB)</td><td>~43.7%</td></tr>
+            <tr><td>TLS/crypto stack</td><td>125,701 bytes (~122.8 KiB)</td><td>~14.7%</td></tr>
+            <tr><td>Cert bundle + app metadata</td><td>92,654 bytes (~90.5 KiB)</td><td>~10.8%</td></tr>
+            <tr><td>Other ESP-IDF/runtime/drivers/libc</td><td>237,889 bytes (~232.3 KiB)</td><td>~27.7%</td></tr>
+          </tbody>
+        </table>
+        <p><code>zclaw.bin</code> from the same build is <strong>865,888 bytes</strong> (~845.6 KiB), under the 888 KiB cap.</p>
+
+        <h2>Full Documentation</h2>
+        <ul>
+          <li><a href="index.html">Full docs site</a></li>
+          <li><a href="reference/README_COMPLETE.md">Complete README (verbatim, full detail)</a></li>
+        </ul>
+
+        <h2>Quick Start</h2>
+        <p>One-line bootstrap (macOS/Linux):</p>
+        <pre><code>bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap.sh)</code></pre>
+        <p>Optional checksum-verified bootstrap (same flow):</p>
+        <pre><code>ZCLAW_BOOTSTRAP_SHA256="&lt;sha256-from-release-notes&gt;" \
+bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap.sh)</code></pre>
+        <p>Already cloned?</p>
+        <pre><code>./install.sh</code></pre>
+        <p>Non-interactive install:</p>
+        <pre><code>./install.sh -y</code></pre>
+
+        <p>Important setup notes:</p>
+        <ul>
+          <li><code>bootstrap.sh</code> clones/updates the repo and then runs <code>./install.sh</code>. You can inspect/verify the bootstrap flow first (including <code>ZCLAW_BOOTSTRAP_SHA256</code> integrity checks); see <a href="getting-started.html">Getting Started</a>.</li>
+          <li>For encrypted credentials in flash, use secure mode (<code>--flash-mode secure</code> in install flow, or <code>./scripts/flash-secure.sh</code> directly).</li>
+          <li>After flashing, provision WiFi + LLM credentials with <code>./scripts/provision.sh</code>.</li>
+          <li>Telegram control commands: <code>/start</code> and <code>/help</code> show help, <code>/settings</code> shows bot status, <code>/stop</code> pauses message intake, <code>/resume</code> re-enables message intake.</li>
+          <li>If serial port is busy, run <code>./scripts/release-port.sh</code> and retry.</li>
+          <li>Full setup/provisioning details are in the docs site index.</li>
+        </ul>
+
+        <h2>Highlights</h2>
+        <ul>
+          <li>Chat via Telegram or hosted web relay</li>
+          <li>Timezone-aware schedules (<code>daily</code>, <code>periodic</code>, and one-shot <code>once</code>)</li>
+          <li>Built-in + user-defined tools</li>
+          <li>GPIO read/write control with guardrails</li>
+          <li>Persistent memory across reboots</li>
+          <li>Provider support for Anthropic, OpenAI, and OpenRouter</li>
+        </ul>
+
+        <h2>Hardware</h2>
+        <p>Tested targets: <strong>ESP32-C3</strong>, <strong>ESP32-S3</strong>, and <strong>ESP32-C6</strong>. Other ESP32 variants should work fine (some may require manual ESP-IDF target setup).</p>
+        <p>Recommended starter board: <a href="https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html">Seeed XIAO ESP32-C3</a></p>
+
+        <h2>Useful Scripts</h2>
+        <table>
+          <thead>
+            <tr><th>Script</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>./scripts/build.sh</code></td><td>Build firmware</td></tr>
+            <tr><td><code>./scripts/flash.sh</code></td><td>Flash firmware</td></tr>
+            <tr><td><code>./scripts/flash-secure.sh</code></td><td>Flash with encryption</td></tr>
+            <tr><td><code>./scripts/provision.sh</code></td><td>Provision credentials to NVS</td></tr>
+            <tr><td><code>./scripts/monitor.sh</code></td><td>Serial monitor</td></tr>
+            <tr><td><code>./scripts/emulate.sh</code></td><td>Run QEMU profile</td></tr>
+            <tr><td><code>./scripts/web-relay.sh</code></td><td>Hosted relay + mobile chat UI</td></tr>
+            <tr><td><code>./scripts/docs-site.sh</code></td><td>Serve docs site locally</td></tr>
+            <tr><td><code>./scripts/test.sh</code></td><td>Run host/device test flows</td></tr>
+          </tbody>
+        </table>
+
+        <h2>License</h2>
+        <p>MIT</p>
+
+        <p class="footer">This page is the web-formatted README for zclaw.</p>
+      </article>
+    </main>
+  </body>
+</html>

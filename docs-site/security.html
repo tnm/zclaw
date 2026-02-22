@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Security and Operations">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Security and Operations">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Security and Operations</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 4</p>
+          <h1 class="page-title">Security &amp; Operations</h1>
+          <p class="deck">zclaw is designed for practical use on small hardware. The safest deployment path is explicit and repeatable.</p>
+        </header>
+
+        <section class="section">
+          <h2>Built-In Safety Defaults</h2>
+          <ul>
+            <li><strong>Rate limiting:</strong> request/hour and request/day caps to control API spend.</li>
+            <li><strong>Telegram auth:</strong> only configured chat ID is accepted.</li>
+            <li><strong>Provisioning gate:</strong> no normal runtime until credentials are set.</li>
+            <li><strong>Boot loop guard:</strong> enters safe mode after repeated startup failures.</li>
+            <li><strong>Input validation:</strong> schema and string sanitation in tool handlers.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Flash Encryption Modes</h2>
+          <table>
+            <thead>
+              <tr><th>Mode</th><th>Command</th><th>When To Use</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Standard</td><td><code>./scripts/flash.sh</code></td><td>Development, easiest iteration.</td></tr>
+              <tr><td>Encrypted dev</td><td><code>./scripts/flash-secure.sh</code></td><td>Credential protection with reflashing convenience.</td></tr>
+              <tr><td>Encrypted production</td><td><code>./scripts/flash-secure.sh --production</code></td><td>Deployment where physical compromise is plausible.</td></tr>
+            </tbody>
+          </table>
+          <p class="inline-note">Encrypted mode is one-way in practice. Back up generated key files in <code>keys/</code>.</p>
+        </section>
+
+        <section class="section">
+          <h2>Incident Response Checklist</h2>
+          <ol>
+            <li>Assume API keys are compromised if device is lost and not encrypted.</li>
+            <li>Rotate LLM keys in provider dashboard.</li>
+            <li>Revoke Telegram token via <code>@BotFather</code>.</li>
+            <li>Rotate web relay API secret (<code>ZCLAW_WEB_API_KEY</code>).</li>
+          </ol>
+        </section>
+
+        <section class="section">
+          <h2>Factory Reset</h2>
+          <p>Default hardware path: hold GPIO9 low for 5+ seconds during startup to erase settings. Adjust per board wiring in firmware config.</p>
+          <p>Host script path: use <code>./scripts/erase.sh --nvs</code> to erase only credentials/settings, or <code>./scripts/erase.sh --all</code> for a full flash wipe.</p>
+          <p class="inline-note">Guardrails: erase mode must be explicit; full flash erase requires interactive confirmation (or <code>--yes</code> in non-interactive flows).</p>
+        </section>
+
+        <section class="section">
+          <h2>Ops Command Table</h2>
+          <pre>./scripts/build.sh
+./scripts/test.sh host
+./scripts/flash.sh
+./scripts/flash-secure.sh --production
+./scripts/provision.sh --port &lt;serial-port&gt;
+./scripts/erase.sh --nvs --port &lt;serial-port&gt;
+./scripts/erase.sh --all --port &lt;serial-port&gt;
+./scripts/monitor.sh &lt;serial-port&gt;</pre>
+        </section>
+
+        <footer class="footer">
+          <p>Next chapter: <a href="build-your-own-tool.html">build and maintain your own tool library</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

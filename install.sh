@@ -7,11 +7,20 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+VERSION_FILE="$SCRIPT_DIR/VERSION"
+ZCLAW_RELEASE_VERSION="dev"
 ESP_IDF_VERSION="v5.4"
 ESP_IDF_DIR="$HOME/esp/esp-idf"
 ESP_IDF_CHIPS="esp32c3,esp32s3"
 PREFS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zclaw"
 PREFS_FILE="$PREFS_DIR/install.env"
+
+if [ -f "$VERSION_FILE" ]; then
+    ZCLAW_RELEASE_VERSION="$(sed -n '1p' "$VERSION_FILE" | tr -d '\r')"
+    if [ -z "$ZCLAW_RELEASE_VERSION" ]; then
+        ZCLAW_RELEASE_VERSION="dev"
+    fi
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -41,6 +50,7 @@ PREF_MONITOR_AFTER_FLASH=""
 PREF_LAST_PORT=""
 
 # CLI overrides
+ASSUME_YES=false
 FORCE_INSTALL_IDF=""
 FORCE_REPAIR_IDF=""
 FORCE_INSTALL_QEMU=""
@@ -64,9 +74,10 @@ print_banner() {
 ███████  ██████ ███████ ██   ██  ███ ███
 EOF
     echo -e "${NC}"
-    echo -e "${DIM}─────────────────────────────────────────────${NC}"
-    echo -e "${MAGENTA}${BOLD}       The five-buck assistant.${NC}"
-    echo -e "${DIM}─────────────────────────────────────────────${NC}"
+    echo -e "${DIM}─────────────────────────────────----------───────────${NC}"
+    echo -e "${MAGENTA}${BOLD}       The 5-dollar assistant in 888kb${NC}"
+    echo -e "${DIM}                  zclaw release v${ZCLAW_RELEASE_VERSION}${NC}"
+    echo -e "${DIM}───────────--------─────────────────────--────────────${NC}"
     echo ""
 }
 
@@ -94,6 +105,8 @@ usage() {
 Usage: ./install.sh [options]
 
 Options:
+  -V, --version                         Print zclaw release version and exit
+  -y, --yes                            Assume "yes" for prompts (explicit --no-* still wins)
   --build / --no-build                  Build firmware now
   --flash / --no-flash                  Flash firmware after successful build
   --flash-mode standard|secure          Explicit flash mode for this run (default: standard)
@@ -310,6 +323,10 @@ parse_args() {
 
     while [ $# -gt 0 ]; do
         case "$1" in
+            -V|--version)
+                echo "zclaw release v$ZCLAW_RELEASE_VERSION"
+                exit 0
+                ;;
             --build) FORCE_BUILD="y" ;;
             --no-build) FORCE_BUILD="n" ;;
             --flash) FORCE_FLASH="y" ;;
@@ -350,6 +367,7 @@ parse_args() {
             --no-repair-idf) FORCE_REPAIR_IDF="n" ;;
             --remember) REMEMBER_PREFS=true ;;
             --no-remember) REMEMBER_PREFS=false ;;
+            -y|--yes) ASSUME_YES=true ;;
             -h|--help)
                 usage
                 exit 0
@@ -369,6 +387,7 @@ ask_yes_no() {
     local default="${2:-y}"
     local pref_key="${3:-}"
     local forced_answer="${4:-}"
+    local auto_apply_saved="${5:-false}"
     local answer
     local normalized
     local saved_default
@@ -386,10 +405,24 @@ ask_yes_no() {
         return 1
     fi
 
+    if [ "$ASSUME_YES" = true ]; then
+        [ -n "$pref_key" ] && set_preference "$pref_key" "y"
+        print_status "$prompt: yes (-y)"
+        return 0
+    fi
+
     if [ -n "$pref_key" ]; then
         saved_default="$(get_preference "$pref_key")"
         if [ "$saved_default" = "y" ] || [ "$saved_default" = "n" ]; then
             default="$saved_default"
+            if [ "$auto_apply_saved" = "true" ]; then
+                if [ "$saved_default" = "y" ]; then
+                    print_status "$prompt: yes (saved)"
+                    return 0
+                fi
+                print_status "$prompt: no (saved)"
+                return 1
+            fi
         fi
     fi
 
@@ -661,7 +694,7 @@ if check_command qemu-system-riscv32; then
 else
     print_warning "QEMU not found"
 
-    if ask_yes_no "Install QEMU for ESP32 emulation?" "y" "INSTALL_QEMU" "$FORCE_INSTALL_QEMU"; then
+    if ask_yes_no "Install QEMU for ESP32 emulation?" "y" "INSTALL_QEMU" "$FORCE_INSTALL_QEMU" "true"; then
         if [ "$OS" = "macos" ]; then
             echo "Installing QEMU via Homebrew..."
             brew install qemu
@@ -698,7 +731,7 @@ if [ "$CJSON_FOUND" = true ]; then
 else
     print_warning "cJSON not found"
 
-    if ask_yes_no "Install cJSON for running host tests?" "y" "INSTALL_CJSON" "$FORCE_INSTALL_CJSON"; then
+    if ask_yes_no "Install cJSON for running host tests?" "y" "INSTALL_CJSON" "$FORCE_INSTALL_CJSON" "true"; then
         if [ "$OS" = "macos" ]; then
             echo "Installing cJSON via Homebrew..."
             brew install cjson
@@ -829,7 +862,7 @@ if [ "$BUILD_SUCCESS" = true ]; then
             fi
         fi
 
-        if [ -z "$FLASH_PORT" ] && [ -t 0 ]; then
+        if [ -z "$FLASH_PORT" ] && [ -t 0 ] && [ "$ASSUME_YES" != true ]; then
             read -r -p "Select device [1-${#PORT_LIST[@]}] or Enter for auto-detect in flash script: " port_choice
             if [ -n "$port_choice" ]; then
                 if [[ "$port_choice" =~ ^[0-9]+$ ]] && [ "$port_choice" -ge 1 ] && [ "$port_choice" -le "${#PORT_LIST[@]}" ]; then
@@ -1054,6 +1087,7 @@ echo ""
 echo -e "${BOLD}Install flags:${NC}"
 echo ""
 echo -e "  ${YELLOW}./install.sh --build --flash --flash-mode secure${NC}"
+echo -e "  ${YELLOW}./install.sh -y --build --flash --provision${NC}"
 echo -e "  ${YELLOW}./install.sh --flash --provision${NC}"
 echo -e "  ${YELLOW}./install.sh --port /dev/cu.usbmodem* --monitor${NC}"
 echo -e "  ${YELLOW}./install.sh --flash --kill-monitor${NC}"

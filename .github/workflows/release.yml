@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump type (ignored when set_version is provided)
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      set_version:
+        description: Explicit version override (X.Y.Z)
+        type: string
+        required: false
+      prerelease:
+        description: Mark release as prerelease
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require main branch
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "Error: run this workflow from main (current: ${GITHUB_REF_NAME})." >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: version
+        run: |
+          set -euo pipefail
+
+          if [ -n "${{ inputs.set_version }}" ]; then
+            ./scripts/bump-version.sh --set "${{ inputs.set_version }}"
+          else
+            ./scripts/bump-version.sh "${{ inputs.bump }}"
+          fi
+
+          version="$(tr -d '\r\n' < VERSION)"
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: VERSION is not X.Y.Z: $version" >&2
+            exit 1
+          fi
+
+          tag="v$version"
+
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "Error: tag already exists locally: $tag" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Error: tag already exists on origin: $tag" >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Compute bootstrap checksums
+        id: checksums
+        run: |
+          set -euo pipefail
+          bootstrap_sha="$(sha256sum scripts/bootstrap.sh | awk '{print $1}')"
+          web_relay_sha="$(sha256sum scripts/bootstrap-web-relay.sh | awk '{print $1}')"
+
+          echo "bootstrap_sha=$bootstrap_sha" >> "$GITHUB_OUTPUT"
+          echo "web_relay_sha=$web_relay_sha" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump and push tag
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          git add VERSION
+          if git diff --cached --quiet; then
+            echo "Error: VERSION did not change; refusing to release." >&2
+            exit 1
+          fi
+
+          git commit -m "release: bump version to $VERSION"
+          git tag "$TAG"
+          git push origin HEAD:main
+          git push origin "$TAG"
+
+      - name: Write release notes
+        env:
+          BOOTSTRAP_SHA: ${{ steps.checksums.outputs.bootstrap_sha }}
+          WEB_RELAY_SHA: ${{ steps.checksums.outputs.web_relay_sha }}
+        run: |
+          set -euo pipefail
+          cat > RELEASE_NOTES.md <<EOF
+          ## Bootstrap Integrity Checks
+
+          Main bootstrap:
+
+          \`\`\`bash
+          ZCLAW_BOOTSTRAP_SHA256="$BOOTSTRAP_SHA" \\
+          bash <(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap.sh)
+          \`\`\`
+
+          Web relay bootstrap:
+
+          \`\`\`bash
+          ZCLAW_WEB_RELAY_BOOTSTRAP_SHA256="$WEB_RELAY_SHA" \\
+          bash <(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bootstrap-web-relay.sh) -- --mock-agent
+          \`\`\`
+
+          Raw values:
+
+          - \`scripts/bootstrap.sh\`: \`$BOOTSTRAP_SHA\`
+          - \`scripts/bootstrap-web-relay.sh\`: \`$WEB_RELAY_SHA\`
+          EOF
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: main
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ inputs.prerelease }}

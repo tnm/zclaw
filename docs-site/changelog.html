@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Changelog">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Changelog">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Changelog</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 8</p>
+          <h1 class="page-title">Changelog</h1>
+          <p class="deck">Release notes for zclaw firmware and docs. For full detail and source control context, use the repository changelog.</p>
+        </header>
+
+        <section class="section">
+          <h2>Current Stream</h2>
+          <p><strong>Unreleased</strong></p>
+          <ul>
+            <li>No unreleased changes yet.</li>
+          </ul>
+          <p class="inline-note">Source of truth: <a href="https://github.com/tnm/zclaw/blob/main/CHANGELOG.md">CHANGELOG.md in repo</a>.</p>
+        </section>
+
+        <section class="section">
+          <h2>Recent Releases</h2>
+          <table>
+            <thead>
+              <tr><th>Version</th><th>Date</th><th>Highlights</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>2.4.2</code></td>
+                <td>2026-02-22</td>
+                <td>Cron self-reschedule loop fixed, docs Field Guide expanded, and runtime-heap wording clarified.</td>
+              </tr>
+              <tr>
+                <td><code>2.4.1</code></td>
+                <td>2026-02-22</td>
+                <td>Persona tools added, persona routed through tool-calling path, prompt/runtime clarity updates.</td>
+              </tr>
+              <tr>
+                <td><code>2.4.0</code></td>
+                <td>2026-02-22</td>
+                <td>Cron responsiveness and plain-text behavior tuned for better real-world operation.</td>
+              </tr>
+              <tr>
+                <td><code>2.3.1</code></td>
+                <td>2026-02-22</td>
+                <td>Network diagnostics expanded; rate/stability thresholds adjusted.</td>
+              </tr>
+              <tr>
+                <td><code>2.3.0</code></td>
+                <td>2026-02-22</td>
+                <td>Telegram reliability hardening and backlog-clear tooling.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Release Workflow</h2>
+          <pre># Bump version (patch/minor/major)
+./scripts/bump-version.sh patch
+
+# Validate
+./scripts/test.sh host
+
+# Commit + tag + push (example)
+git tag -a vX.Y.Z -m "zclaw vX.Y.Z"
+git push origin main
+git push origin vX.Y.Z</pre>
+        </section>
+
+        <footer class="footer">
+          <p>Back to <a href="index.html">chapter overview</a> or read <a href="use-cases.html">use cases</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

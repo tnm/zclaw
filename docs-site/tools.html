@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Tool Surface">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Tool Surface">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Tool Surface</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 2</p>
+          <h1 class="page-title">Tool Surface</h1>
+          <p class="deck">Tools are the execution boundary: model chooses calls, firmware enforces schema and executes side effects.</p>
+        </header>
+
+        <section class="section">
+          <h2>Built-In Tools</h2>
+          <table>
+            <thead>
+              <tr><th>Group</th><th>Tools</th><th>Use</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>GPIO</td><td><code>gpio_write</code>, <code>gpio_read</code>, <code>delay</code>, <code>i2c_scan</code></td><td>Pins, timings, sensor bus checks.</td></tr>
+              <tr><td>Memory</td><td><code>memory_set</code>, <code>memory_get</code>, <code>memory_list</code>, <code>memory_delete</code></td><td>Persistent user state (<code>u_*</code> keys).</td></tr>
+              <tr><td>Schedules</td><td><code>cron_set</code>, <code>cron_list</code>, <code>cron_delete</code></td><td>Periodic, daily, and one-shot jobs.</td></tr>
+              <tr><td>Clock</td><td><code>get_time</code>, <code>set_timezone</code>, <code>get_timezone</code></td><td>Timezone-aware schedule behavior.</td></tr>
+              <tr><td>System</td><td><code>get_version</code>, <code>get_health</code></td><td>Firmware + runtime diagnostics.</td></tr>
+              <tr><td>User tools</td><td><code>create_tool</code>, <code>list_user_tools</code>, <code>delete_user_tool</code></td><td>Natural-language macro layer.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Telegram Control Commands</h2>
+          <table>
+            <thead>
+              <tr><th>Command</th><th>Behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>/start</code></td><td>Shows local command help without calling the LLM.</td></tr>
+              <tr><td><code>/help</code></td><td>Alias of <code>/start</code>; returns local command help without calling the LLM.</td></tr>
+              <tr><td><code>/settings</code></td><td>Shows local bot status (including paused/active intake state).</td></tr>
+              <tr><td><code>/stop</code></td><td>Pauses inbound message processing (used to stop spam loops).</td></tr>
+              <tr><td><code>/resume</code></td><td>Re-enables inbound message processing after <code>/stop</code>.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Schedule Grammar</h2>
+          <p><code>cron_set</code> accepts three schedule types:</p>
+          <table>
+            <thead>
+              <tr><th>Type</th><th>Required Inputs</th><th>Behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>periodic</code></td><td><code>interval_minutes</code>, <code>action</code></td><td>Repeats every N minutes.</td></tr>
+              <tr><td><code>daily</code></td><td><code>hour</code>, <code>minute</code>, <code>action</code></td><td>Runs at local device time daily.</td></tr>
+              <tr><td><code>once</code></td><td><code>delay_minutes</code>, <code>action</code></td><td>Runs once after N minutes, then auto-removes itself.</td></tr>
+            </tbody>
+          </table>
+          <pre>{"type":"once","delay_minutes":20,"action":"check garage sensor"}</pre>
+          <p class="inline-note">Scheduler resolution is minute-based. A one-shot fires on the next due cron scan.</p>
+        </section>
+
+        <section class="section">
+          <h2>User Tool Model</h2>
+          <p>User-defined tools do not compile code. They store short action text that the model later translates into built-in tool calls.</p>
+          <pre>You: Create tool "water_plants" to turn GPIO 5 on for 30 seconds then off
+Agent internals:
+1) create_tool(name="water_plants", action="Turn GPIO 5 on, wait 30 seconds, turn off")
+2) Later invocation returns action text
+3) Model executes via gpio_write + delay + gpio_write</pre>
+        </section>
+
+        <section class="section">
+          <h2>Operational Boundaries</h2>
+          <ul>
+            <li>GPIO is constrained by configured safety policy.</li>
+            <li>Memory keys for user values must use <code>u_</code> prefix.</li>
+            <li>Schedule action payload is bounded by <code>CRON_MAX_ACTION_LEN</code>.</li>
+          </ul>
+        </section>
+
+        <footer class="footer">
+          <p>Next chapter: <a href="architecture.html">runtime queues, tasks, and LLM flow</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

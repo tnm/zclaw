@@ -7,6 +7,7 @@
 #define LLM_REQUEST_BUF_SIZE    12288   // 12KB for outgoing JSON
 #define LLM_RESPONSE_BUF_SIZE   16384   // 16KB for incoming JSON
 #define CHANNEL_RX_BUF_SIZE     512     // Input line buffer
+#define CHANNEL_TX_BUF_SIZE     1024    // Output response buffer for serial/web relay
 #define TOOL_RESULT_BUF_SIZE    512     // Tool execution result
 
 // -----------------------------------------------------------------------------
@@ -54,8 +55,17 @@ typedef enum {
 #define LLM_DEFAULT_MODEL_OPENAI      "gpt-5.2"
 #define LLM_DEFAULT_MODEL_OPENROUTER  "minimax/minimax-m2.5"
 
+#define LLM_API_KEY_MAX_LEN       511
+#define LLM_API_KEY_BUF_SIZE      (LLM_API_KEY_MAX_LEN + 1)
+#define LLM_AUTH_HEADER_BUF_SIZE  (sizeof("Bearer ") - 1 + LLM_API_KEY_MAX_LEN + 1)
+
 #define LLM_MAX_TOKENS          1024
 #define HTTP_TIMEOUT_MS         30000   // 30 seconds for API calls
+#define LLM_HTTP_TIMEOUT_MS     20000   // 20 seconds for LLM API calls
+#define LLM_MAX_RETRIES         3       // Max LLM attempts per round (including first attempt)
+#define LLM_RETRY_BASE_MS       2000    // Initial retry delay after a failed LLM call
+#define LLM_RETRY_MAX_MS        10000   // Maximum exponential retry delay
+#define LLM_RETRY_BUDGET_MS     45000   // Max wall-clock retry budget per LLM round
 
 // -----------------------------------------------------------------------------
 // System Prompt
@@ -64,8 +74,16 @@ typedef enum {
     "You are zclaw, an AI agent running on an ESP32 microcontroller. " \
     "You have 400KB of RAM and run on bare metal with FreeRTOS. " \
     "You can control GPIO pins, store persistent memories, and set schedules. " \
+    "You run on the device itself, not as a separate cloud session. " \
     "Be concise - you're on a tiny chip. " \
+    "Return plain text only. Do not use markdown, code fences, bullet lists, backticks, " \
+    "bold, italics, or headings. " \
     "Use your tools to control hardware, remember things, and automate tasks. " \
+    "If users explicitly ask to view or change persona/tone settings, use " \
+    "set_persona/get_persona/reset_persona tools. " \
+    "Persona is a persistent device setting on this ESP32 and survives reboot until changed or reset. " \
+    "Do not change persona based on ambiguous wording or casual chat. " \
+    "When asked what is currently saved/set on the device, use tools to verify instead of guessing. " \
     "Users can create custom tools with create_tool. When you call a custom tool, " \
     "you'll receive an action to execute - carry it out using your built-in tools."
 
@@ -117,11 +135,17 @@ typedef enum {
 #define TELEGRAM_POLL_TIMEOUT   30      // Long polling timeout (seconds)
 #define TELEGRAM_POLL_INTERVAL  100     // ms between poll attempts on error
 #define TELEGRAM_MAX_MSG_LEN    4096    // Max message length
+#define TELEGRAM_FLUSH_ON_START 1       // Drop stale pending updates at startup
+#define TELEGRAM_STALE_POLL_LOG_INTERVAL 4          // Log every N stale-only polls
+#define TELEGRAM_STALE_POLL_RESYNC_STREAK 8         // Trigger auto-resync after this streak
+#define TELEGRAM_STALE_POLL_RESYNC_COOLDOWN_MS 60000 // Min gap between auto-resync attempts
+#define START_COMMAND_COOLDOWN_MS 30000 // Debounce repeated Telegram /start bursts
+#define MESSAGE_REPLAY_COOLDOWN_MS 20000 // Suppress repeated identical non-command bursts
 
 // -----------------------------------------------------------------------------
 // Cron / Scheduler
 // -----------------------------------------------------------------------------
-#define CRON_CHECK_INTERVAL_MS  60000   // Check schedules every minute
+#define CRON_CHECK_INTERVAL_MS  10000   // Check schedules every 10 seconds
 #define CRON_MAX_ENTRIES        16      // Max scheduled tasks
 #define CRON_MAX_ACTION_LEN     256     // Max action string length
 
@@ -149,14 +173,14 @@ typedef enum {
 // -----------------------------------------------------------------------------
 // Boot Loop Protection
 // -----------------------------------------------------------------------------
-#define MAX_BOOT_FAILURES       3       // Enter safe mode after N consecutive failures
+#define MAX_BOOT_FAILURES       4       // Enter safe mode after N consecutive failures
 #define BOOT_SUCCESS_DELAY_MS   30000   // Clear boot counter after this time connected
 
 // -----------------------------------------------------------------------------
 // Rate Limiting
 // -----------------------------------------------------------------------------
-#define RATELIMIT_MAX_PER_HOUR      30      // Max LLM requests per hour
-#define RATELIMIT_MAX_PER_DAY       200     // Max LLM requests per day
+#define RATELIMIT_MAX_PER_HOUR      100     // Max LLM requests per hour
+#define RATELIMIT_MAX_PER_DAY       1000    // Max LLM requests per day
 #define RATELIMIT_ENABLED           1       // Set to 0 to disable
 
 #endif // CONFIG_H

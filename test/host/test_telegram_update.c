@@ -60,6 +60,17 @@ TEST(parse_invalid_input)
     return 0;
 }
 
+TEST(parse_flush_response_shape)
+{
+    int64_t max_id = -1;
+    const char *json =
+        "{\"ok\":true,\"result\":[{\"update_id\":12345,"
+        "\"message\":{\"text\":\"/start payload\",\"chat\":{\"id\":42}}}]}";
+    ASSERT(telegram_extract_max_update_id(json, &max_id));
+    ASSERT(max_id == 12345);
+    return 0;
+}
+
 int test_telegram_update_all(void)
 {
     int failures = 0;
@@ -96,6 +107,13 @@ int test_telegram_update_all(void)
 
     printf("  parse_invalid_input... ");
     if (test_parse_invalid_input() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  parse_flush_response_shape... ");
+    if (test_parse_flush_response_shape() == 0) {
         printf("OK\n");
     } else {
         failures++;

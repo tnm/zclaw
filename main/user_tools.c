@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include "nvs_flash.h"
 #include "nvs.h"
+#include <ctype.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -34,6 +35,49 @@ static bool name_conflicts_with_builtin_tool(const char *name)
     }
 
     return false;
+}
+
+static void user_tool_sanitize_strings(user_tool_t *tool)
+{
+    if (!tool) {
+        return;
+    }
+    tool->name[TOOL_NAME_MAX_LEN - 1] = '\0';
+    tool->description[TOOL_DESC_MAX_LEN - 1] = '\0';
+    tool->action[CRON_MAX_ACTION_LEN - 1] = '\0';
+}
+
+static bool user_tool_name_is_valid(const char *name)
+{
+    if (!name || name[0] == '\0') {
+        return false;
+    }
+
+    for (size_t i = 0; name[i] != '\0'; i++) {
+        unsigned char c = (unsigned char)name[i];
+        if (!(isalnum(c) || c == '_')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool user_tool_record_is_valid(const user_tool_t *tool)
+{
+    if (!tool) {
+        return false;
+    }
+    if (!user_tool_name_is_valid(tool->name)) {
+        return false;
+    }
+    if (tool->description[0] == '\0' || tool->action[0] == '\0') {
+        return false;
+    }
+    if (name_conflicts_with_builtin_tool(tool->name)) {
+        return false;
+    }
+    return true;
 }
 
 static esp_err_t save_to_nvs(void)
@@ -108,12 +152,28 @@ static void load_from_nvs(void)
 
     for (int i = 0; i < count; i++) {
         char key[16];
+        user_tool_t loaded_tool;
+        size_t len = sizeof(loaded_tool);
+        esp_err_t err;
+
         snprintf(key, sizeof(key), "ut_%d", i);
-        size_t len = sizeof(user_tool_t);
-        if (nvs_get_blob(handle, key, &s_tools[i], &len) == ESP_OK) {
-            s_tool_count++;
-            ESP_LOGI(TAG, "Loaded user tool: %s", s_tools[i].name);
+
+        memset(&loaded_tool, 0, sizeof(loaded_tool));
+        err = nvs_get_blob(handle, key, &loaded_tool, &len);
+        if (err != ESP_OK || len != sizeof(loaded_tool)) {
+            ESP_LOGW(TAG, "Skipping invalid user tool blob at %s", key);
+            continue;
         }
+
+        user_tool_sanitize_strings(&loaded_tool);
+        if (!user_tool_record_is_valid(&loaded_tool)) {
+            ESP_LOGW(TAG, "Skipping malformed user tool at %s", key);
+            continue;
+        }
+
+        s_tools[s_tool_count] = loaded_tool;
+        s_tool_count++;
+        ESP_LOGI(TAG, "Loaded user tool: %s", loaded_tool.name);
     }
 
     nvs_close(handle);
@@ -133,8 +193,12 @@ bool user_tools_create(const char *name, const char *description, const char *ac
         return false;
     }
 
-    if (strlen(name) == 0 || strlen(name) >= TOOL_NAME_MAX_LEN) {
-        ESP_LOGW(TAG, "Invalid tool name length");
+    if (!user_tool_name_is_valid(name) || strlen(name) >= TOOL_NAME_MAX_LEN) {
+        ESP_LOGW(TAG, "Invalid tool name");
+        return false;
+    }
+    if (description[0] == '\0' || action[0] == '\0') {
+        ESP_LOGW(TAG, "Tool description/action must be non-empty");
         return false;
     }
 

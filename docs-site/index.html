@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+        <p class="sidebar-note">Practical notes for building, flashing, and operating zclaw in the field.</p>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 0</p>
+          <h1 class="page-title">The 888 KiB Assistant</h1>
+          <p class="deck">zclaw is an ESP32-resident AI agent written in C. It runs as a practical assistant over Telegram or host relay, with scheduling, GPIO control, memory, and a tight firmware budget.</p>
+        </header>
+
+        <section class="hero-grid">
+          <article class="paper-card">
+            <h3>Enjoy with zclaw</h3>
+            <ul class="quote-list">
+              <li>"Remind me in 20 minutes."</li>
+              <li>"Water the plants every day at 8:15."</li>
+              <li>"Set GPIO 5 high."</li>
+              <li>"Remember that my office sensor is on GPIO 4."</li>
+            </ul>
+            <p class="quote">You send plain language, zclaw maps to tool calls, firmware executes on silicon.</p>
+            <pre class="code">You: In 20 minutes, check the garage sensor
+Agent: Created schedule #7: once in 20 min -> check the garage sensor</pre>
+          </article>
+
+          <figure class="figure paper-card">
+            <img src="images/lobster_xiao_cropped_left.png" alt="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+            <figcaption class="figure-note">Tested targets: ESP32-C3, ESP32-S3, and ESP32-C6. Other ESP32 variants should work fine.</figcaption>
+          </figure>
+        </section>
+
+        <section class="section">
+          <h2>What "888 KiB" Means</h2>
+          <p>The <strong>888 KiB</strong> target is an all-in firmware cap, not just zclaw application logic. It includes app code plus ESP-IDF/FreeRTOS runtime, Wi-Fi/networking, TLS/crypto, and cert bundle overhead.</p>
+          <p>Current default <code>esp32s3</code> build (<code>idf.py -B build size-components</code>, flash totals):</p>
+          <table>
+            <thead>
+              <tr><th>Layer</th><th>Size</th><th>Share</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>zclaw app logic (<code>libmain.a</code>)</td><td>26,430 bytes (~25.8 KiB)</td><td>~3.1%</td></tr>
+              <tr><td>Wi-Fi + networking stack</td><td>375,278 bytes (~366.5 KiB)</td><td>~43.7%</td></tr>
+              <tr><td>TLS/crypto stack</td><td>125,701 bytes (~122.8 KiB)</td><td>~14.7%</td></tr>
+              <tr><td>Cert bundle + app metadata</td><td>92,654 bytes (~90.5 KiB)</td><td>~10.8%</td></tr>
+              <tr><td>Other ESP-IDF/runtime/drivers/libc</td><td>237,889 bytes (~232.3 KiB)</td><td>~27.7%</td></tr>
+            </tbody>
+          </table>
+          <p class="inline-note"><code>zclaw.bin</code> from the same build is <strong>865,888 bytes</strong> (~845.6 KiB), under the 888 KiB cap.</p>
+        </section>
+
+        <section class="section">
+          <h2>Read This Manual In Order</h2>
+          <div class="chapter-grid">
+            <a class="chapter-link" href="getting-started.html">
+              <strong>Chapter 1 · Getting Started</strong>
+              <span>Bootstrap install, flash, provision, and first successful boot.</span>
+            </a>
+            <a class="chapter-link" href="tools.html">
+              <strong>Chapter 2 · Tool Surface</strong>
+              <span>Current built-in tools and scheduling behavior, including one-shot jobs.</span>
+            </a>
+            <a class="chapter-link" href="architecture.html">
+              <strong>Chapter 3 · Runtime Anatomy</strong>
+              <span>Task model, queues, LLM path, and practical constraints.</span>
+            </a>
+            <a class="chapter-link" href="security.html">
+              <strong>Chapter 4 · Security &amp; Ops</strong>
+              <span>Safety defaults, flash encryption, and production handling guidance.</span>
+            </a>
+            <a class="chapter-link" href="build-your-own-tool.html">
+              <strong>Chapter 5 · Build Your Own Tool</strong>
+              <span>Design, create, validate, and maintain custom natural-language tools.</span>
+            </a>
+            <a class="chapter-link" href="local-dev.html">
+              <strong>Chapter 6 · Local Dev &amp; Hacking</strong>
+              <span>Practical local iteration loops, provisioning profiles, and debug workflows.</span>
+            </a>
+            <a class="chapter-link" href="use-cases.html">
+              <strong>Chapter 7 · Use Cases</strong>
+              <span>Useful and playful ideas that are only practical when the assistant lives on your device.</span>
+            </a>
+            <a class="chapter-link" href="changelog.html">
+              <strong>Chapter 8 · Changelog</strong>
+              <span>Release notes and a timeline of what changed across versions.</span>
+            </a>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>Project Character</h2>
+          <ul>
+            <li><strong>Language/runtime:</strong> C + ESP-IDF + FreeRTOS.</li>
+            <li><strong>LLM backends:</strong> Anthropic, OpenAI, OpenRouter.</li>
+            <li><strong>Interface:</strong> Telegram and optional host web relay.</li>
+            <li><strong>Philosophy:</strong> ship useful automation under strict resource bounds.</li>
+          </ul>
+        </section>
+
+        <footer class="footer">
+          <p>Source of truth remains code + root README. This site is the human-facing layer built for readability.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

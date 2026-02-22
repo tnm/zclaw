@@ -13,6 +13,7 @@ typedef enum {
     CRON_TYPE_PERIODIC,     // Every N minutes
     CRON_TYPE_DAILY,        // At specific hour:minute
     CRON_TYPE_CONDITION,    // When condition is met (checked periodically)
+    CRON_TYPE_ONCE,         // Run once after N minutes
 } cron_type_t;
 
 // Cron entry structure

@@ -591,6 +591,8 @@ INDEX_HTML = """<!doctype html>
       white-space: pre-wrap;
       line-height: 1.45;
       animation: enter 160ms ease;
+      animation-iteration-count: 1;
+      animation-fill-mode: both;
     }
 
     .bubble.user {
@@ -716,6 +718,15 @@ INDEX_HTML = """<!doctype html>
     @keyframes enter {
       from { opacity: 0; transform: translateY(4px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation: none !important;
+        transition: none !important;
+      }
     }
 
     @media (max-width: 640px) {

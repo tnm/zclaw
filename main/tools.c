@@ -62,11 +62,29 @@ static const tool_def_t s_tools[] = {
         .input_schema_json = "{\"type\":\"object\",\"properties\":{\"key\":{\"type\":\"string\",\"description\":\"User key to delete (must start with u_)\"}},\"required\":[\"key\"]}",
         .execute = tools_memory_delete_handler
     },
+    {
+        .name = "set_persona",
+        .description = "Set assistant tone persona. Call only when the user explicitly asks to change persona/tone settings. Affects wording only, never tool or safety behavior.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"persona\":{\"type\":\"string\",\"enum\":[\"neutral\",\"friendly\",\"technical\",\"witty\"],\"description\":\"Persona name\"}},\"required\":[\"persona\"]}",
+        .execute = tools_set_persona_handler
+    },
+    {
+        .name = "get_persona",
+        .description = "Get current assistant tone persona. Use when user asks which persona is active.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
+        .execute = tools_get_persona_handler
+    },
+    {
+        .name = "reset_persona",
+        .description = "Reset assistant tone persona back to neutral. Call only when user explicitly asks to reset persona/tone settings.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
+        .execute = tools_reset_persona_handler
+    },
     // Cron/Scheduler
     {
         .name = "cron_set",
-        .description = "Create a scheduled task. Type 'periodic' runs every N minutes. Type 'daily' runs at a specific local time in the device timezone (see set_timezone/get_timezone).",
-        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"periodic\",\"daily\"]},\"interval_minutes\":{\"type\":\"integer\",\"description\":\"For periodic: minutes between runs\"},\"hour\":{\"type\":\"integer\",\"description\":\"For daily: hour 0-23\"},\"minute\":{\"type\":\"integer\",\"description\":\"For daily: minute 0-59\"},\"action\":{\"type\":\"string\",\"description\":\"What to do when triggered\"}},\"required\":[\"type\",\"action\"]}",
+        .description = "Create a scheduled task. Type 'periodic' runs every N minutes. Type 'daily' runs at a specific local time in the device timezone (see set_timezone/get_timezone). Type 'once' runs one time after N minutes.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"type\":{\"type\":\"string\",\"enum\":[\"periodic\",\"daily\",\"once\"]},\"interval_minutes\":{\"type\":\"integer\",\"description\":\"For periodic: minutes between runs\"},\"delay_minutes\":{\"type\":\"integer\",\"description\":\"For once: minutes from now before one-time run\"},\"hour\":{\"type\":\"integer\",\"description\":\"For daily: hour 0-23\"},\"minute\":{\"type\":\"integer\",\"description\":\"For daily: minute 0-59\"},\"action\":{\"type\":\"string\",\"description\":\"What to do when triggered\"}},\"required\":[\"type\",\"action\"]}",
         .execute = tools_cron_set_handler
     },
     {

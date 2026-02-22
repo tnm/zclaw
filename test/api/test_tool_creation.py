@@ -72,8 +72,9 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "type": {"type": "string", "enum": ["periodic", "daily"]},
+                "type": {"type": "string", "enum": ["periodic", "daily", "once"]},
                 "interval_minutes": {"type": "integer"},
+                "delay_minutes": {"type": "integer"},
                 "hour": {"type": "integer"},
                 "minute": {"type": "integer"},
                 "action": {"type": "string"}

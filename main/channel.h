@@ -13,7 +13,8 @@ void channel_init(void);
 // Start the channel task (reads serial, writes responses)
 esp_err_t channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue);
 
-// Write a string to the serial output (thread-safe)
+// Write a string to the serial output.
+// Note: output can interleave with other channel task writes (echo/bridge traffic).
 void channel_write(const char *text);
 
 // Exchange one LLM request/response line with a host bridge over serial.

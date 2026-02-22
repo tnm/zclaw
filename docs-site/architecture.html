@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Runtime Anatomy">
+    <meta property="og:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Runtime Anatomy">
+    <meta name="twitter:description" content="Practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Runtime Anatomy</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 3</p>
+          <h1 class="page-title">Runtime Anatomy</h1>
+          <p class="deck">The firmware runs as cooperating FreeRTOS tasks with queue handoff between input channels, agent loop, and schedule subsystem.</p>
+        </header>
+
+        <section class="section">
+          <h2>Task Layout</h2>
+          <pre>channel_read_task  -> input_queue -> agent_task -> channel/telegram output queues
+telegram_poll_task -> input_queue
+cron_task          -> input_queue
+</pre>
+          <p>The agent loop is the decision engine and currently processes one inbound message at a time.</p>
+        </section>
+
+        <section class="section">
+          <h2>Message Lifecycle</h2>
+          <ol>
+            <li>Inbound text arrives from serial, Telegram, or cron action.</li>
+            <li>Agent appends user message to rolling history buffer.</li>
+            <li>Agent builds request JSON and calls LLM backend.</li>
+            <li>If model returns tool call, firmware executes tool handler and loops for next model step.</li>
+            <li>Final assistant text is queued to channel and optionally Telegram.</li>
+          </ol>
+        </section>
+
+        <section class="section">
+          <h2>Practical Constraints</h2>
+          <ul>
+            <li>Bounded buffers for request/response and tool results.</li>
+            <li>Retry with backoff on transient LLM failures.</li>
+            <li>Queue depth limits can drop work under sustained backlog.</li>
+            <li>Scheduler checks every minute by default.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Architecture Sketch</h2>
+          <pre>┌─────────────────────────────────────────────────┐
+│ app_main                                        │
+│ WiFi/NTP init + task startup                    │
+└─────────────────────────────────────────────────┘
+      │                  │                   │
+      ▼                  ▼                   ▼
+┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+│ channel.c     │  │ telegram.c    │  │ cron.c        │
+│ serial IO     │  │ bot polling   │  │ schedule fire │
+└───────┬───────┘  └───────┬───────┘  └───────┬───────┘
+        └──────────────┬───┴───────────────┬──┘
+                       ▼                   ▼
+                    input queue        time/NVS
+                       │
+                       ▼
+                 ┌───────────────┐
+                 │ agent.c       │
+                 │ tool loop     │
+                 └───────┬───────┘
+                         ▼
+                 ┌───────────────┐
+                 │ llm.c + tools │
+                 └───────────────┘
+</pre>
+        </section>
+
+        <section class="section">
+          <h2>Where To Dig Next</h2>
+          <ul>
+            <li><code>main/agent.c</code> for conversation loop and retry behavior.</li>
+            <li><code>main/llm.c</code> for backend transport paths.</li>
+            <li><code>main/cron.c</code> for periodic/daily/once scheduling logic.</li>
+          </ul>
+        </section>
+
+        <footer class="footer">
+          <p>Next chapter: <a href="security.html">credential handling and flash encryption modes</a>.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

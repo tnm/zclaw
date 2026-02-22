@@ -6,6 +6,8 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
+#include <limits.h>
 
 static const char *TAG = "ratelimit";
 
@@ -14,16 +16,41 @@ static int s_requests_this_hour = 0;
 static int s_requests_today = 0;
 static int s_last_hour = -1;
 static int s_last_day = -1;
+static int s_last_year = -1;
+
+static int parse_int_or_default(const char *value, int fallback)
+{
+    char *endptr = NULL;
+    long parsed;
+
+    if (!value || value[0] == '\0') {
+        return fallback;
+    }
+
+    parsed = strtol(value, &endptr, 10);
+    if (!endptr || endptr == value || *endptr != '\0') {
+        return fallback;
+    }
+
+    if (parsed < INT_MIN || parsed > INT_MAX) {
+        return fallback;
+    }
+
+    return (int)parsed;
+}
 
 void ratelimit_init(void)
 {
     // Load persisted daily count
     char buf[16];
     if (memory_get(NVS_KEY_RL_DAILY, buf, sizeof(buf))) {
-        s_requests_today = atoi(buf);
+        s_requests_today = parse_int_or_default(buf, 0);
     }
     if (memory_get(NVS_KEY_RL_DAY, buf, sizeof(buf))) {
-        s_last_day = atoi(buf);
+        s_last_day = parse_int_or_default(buf, -1);
+    }
+    if (memory_get(NVS_KEY_RL_YEAR, buf, sizeof(buf))) {
+        s_last_year = parse_int_or_default(buf, -1);
     }
 
     ESP_LOGI(TAG, "Rate limiter initialized: %d requests today", s_requests_today);
@@ -38,6 +65,7 @@ static void update_time_window(void)
 
     int current_hour = timeinfo.tm_hour;
     int current_day = timeinfo.tm_yday;
+    int current_year = timeinfo.tm_year;
 
     // Reset hourly counter if hour changed
     if (current_hour != s_last_hour) {
@@ -45,15 +73,18 @@ static void update_time_window(void)
         s_last_hour = current_hour;
     }
 
-    // Reset daily counter if day changed
-    if (current_day != s_last_day) {
+    // Reset daily counter when either day or year changes.
+    if (current_day != s_last_day || current_year != s_last_year) {
         s_requests_today = 0;
         s_last_day = current_day;
+        s_last_year = current_year;
 
-        // Persist the new day
+        // Persist the new day/year and reset count.
         char buf[16];
         snprintf(buf, sizeof(buf), "%d", current_day);
         memory_set(NVS_KEY_RL_DAY, buf);
+        snprintf(buf, sizeof(buf), "%d", current_year);
+        memory_set(NVS_KEY_RL_YEAR, buf);
         memory_set(NVS_KEY_RL_DAILY, "0");
 
         ESP_LOGI(TAG, "Daily rate limit reset");

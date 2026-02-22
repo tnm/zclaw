@@ -101,6 +101,20 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
         </section>
 
         <section class="section">
+          <h2>First Conversation</h2>
+          <p>Talk to zclaw in normal language. You do not need command syntax.</p>
+          <pre>turn GPIO 4 on
+what are all GPIO states
+remind me daily at 8:15 to water plants
+remember that GPIO 4 controls the arcade machine
+create a tool called arcade_on that turns GPIO 4 on</pre>
+          <p>Persona options are <code>neutral</code>, <code>friendly</code>, <code>technical</code>, and <code>witty</code>.</p>
+          <pre>switch to witty persona
+what persona are you using</pre>
+          <p class="inline-note">Persona only changes wording/tone, not tool behavior or safety decisions. Persona is saved on-device until changed or reset.</p>
+        </section>
+
+        <section class="section">
           <h2>Fast Re-Provision (Local Dev)</h2>
           <pre># One-time: create local profile template
 ./scripts/provision-dev.sh --write-template

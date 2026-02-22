@@ -9,6 +9,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Changed
 - _None yet._
 
+## [2.5.2] - 2026-02-22
+
+### Changed
+- `/start` and `/help` onboarding examples now lead with natural-language usage and include scheduling/tool-creation examples.
+- Getting Started now places Telegram setup ahead of first-chat examples and clarifies both non-interactive flags and interactive prompt entry for Telegram credentials.
+- Added a short user/agent example flow in Getting Started for creating a tool and scheduling it by natural language.
+
 ## [2.5.1] - 2026-02-22
 
 ### Changed

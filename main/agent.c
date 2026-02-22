@@ -18,11 +18,6 @@
 
 static const char *TAG = "agent";
 
-// LLM retry configuration
-#define LLM_MAX_RETRIES     3
-#define LLM_RETRY_BASE_MS   2000
-#define LLM_RETRY_MAX_MS    10000
-
 // Queues
 static QueueHandle_t s_input_queue;
 static QueueHandle_t s_channel_output_queue;
@@ -398,8 +393,17 @@ static void process_message(const char *user_message)
         // Send to LLM with retry
         esp_err_t err = ESP_FAIL;
         int retry_delay_ms = LLM_RETRY_BASE_MS;
+        int64_t retry_window_started_us = esp_timer_get_time();
 
         for (int retry = 0; retry < LLM_MAX_RETRIES; retry++) {
+            uint32_t retry_elapsed_ms = us_to_ms_u32(elapsed_us_since(retry_window_started_us));
+            if (retry > 0 && retry_elapsed_ms >= LLM_RETRY_BUDGET_MS) {
+                ESP_LOGW(TAG,
+                         "LLM retry budget exhausted before attempt %d/%d (%" PRIu32 "ms/%dms)",
+                         retry + 1, LLM_MAX_RETRIES, retry_elapsed_ms, LLM_RETRY_BUDGET_MS);
+                break;
+            }
+
             int64_t llm_started_us = esp_timer_get_time();
             err = llm_request(request, s_response_buf, sizeof(s_response_buf));
             metrics.llm_us_total += elapsed_us_since(llm_started_us);
@@ -412,9 +416,31 @@ static void process_message(const char *user_message)
                 break;
             }
 
-            ESP_LOGW(TAG, "LLM request failed (attempt %d/%d), retrying in %dms",
-                     retry + 1, LLM_MAX_RETRIES, retry_delay_ms);
-            vTaskDelay(pdMS_TO_TICKS(retry_delay_ms));
+            retry_elapsed_ms = us_to_ms_u32(elapsed_us_since(retry_window_started_us));
+            if (retry_elapsed_ms >= LLM_RETRY_BUDGET_MS) {
+                ESP_LOGW(TAG,
+                         "LLM retry budget exhausted after attempt %d/%d (%" PRIu32 "ms/%dms)",
+                         retry + 1, LLM_MAX_RETRIES, retry_elapsed_ms, LLM_RETRY_BUDGET_MS);
+                break;
+            }
+
+            uint32_t remaining_budget_ms = (uint32_t)(LLM_RETRY_BUDGET_MS - retry_elapsed_ms);
+            int delay_ms = retry_delay_ms;
+            if ((uint32_t)delay_ms > remaining_budget_ms) {
+                delay_ms = (int)remaining_budget_ms;
+            }
+
+            if (delay_ms <= 0) {
+                ESP_LOGW(TAG,
+                         "LLM retry budget left no delay before next attempt (%" PRIu32 "ms/%dms)",
+                         retry_elapsed_ms, LLM_RETRY_BUDGET_MS);
+                break;
+            }
+
+            ESP_LOGW(TAG,
+                     "LLM request failed (attempt %d/%d), retrying in %dms (budget %" PRIu32 "/%dms)",
+                     retry + 1, LLM_MAX_RETRIES, delay_ms, retry_elapsed_ms, LLM_RETRY_BUDGET_MS);
+            vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
             // Exponential backoff
             retry_delay_ms *= 2;

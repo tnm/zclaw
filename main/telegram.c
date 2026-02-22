@@ -9,6 +9,9 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
+#include "esp_system.h"
+#include "esp_wifi.h"
 #include "cJSON.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -29,6 +32,9 @@ static char s_bot_token[64] = {0};
 static int64_t s_chat_id = 0;
 static int64_t s_last_update_id = 0;
 static telegram_msg_t s_send_msg;
+static uint32_t s_stale_only_poll_streak = 0;
+static uint32_t s_poll_sequence = 0;
+static int64_t s_last_stale_resync_us = 0;
 
 // Exponential backoff state
 static int s_consecutive_failures = 0;
@@ -47,6 +53,16 @@ typedef struct {
     bool truncated;
 } telegram_http_ctx_t;
 
+typedef struct {
+    uint32_t free_heap;
+    uint32_t min_heap;
+    uint32_t largest_block;
+    int rssi;
+    bool rssi_valid;
+} net_diag_snapshot_t;
+
+static esp_err_t telegram_flush_pending_updates(void);
+
 static const char *http_transport_name(esp_http_client_transport_t transport)
 {
     switch (transport) {
@@ -56,6 +72,131 @@ static const char *http_transport_name(esp_http_client_transport_t transport)
             return "ssl";
         default:
             return "unknown";
+    }
+}
+
+static uint32_t elapsed_ms_since(int64_t started_us)
+{
+    int64_t now_us = esp_timer_get_time();
+    if (now_us <= started_us) {
+        return 0;
+    }
+    int64_t elapsed_us = now_us - started_us;
+    return (uint32_t)(elapsed_us / 1000);
+}
+
+static void capture_net_diag_snapshot(net_diag_snapshot_t *snapshot)
+{
+    if (!snapshot) {
+        return;
+    }
+
+    snapshot->free_heap = (uint32_t)esp_get_free_heap_size();
+    snapshot->min_heap = (uint32_t)esp_get_minimum_free_heap_size();
+    snapshot->largest_block = (uint32_t)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    snapshot->rssi = 0;
+    snapshot->rssi_valid = false;
+
+    wifi_ap_record_t ap_info;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        snapshot->rssi = ap_info.rssi;
+        snapshot->rssi_valid = true;
+    }
+}
+
+static void log_http_diag(const char *operation,
+                          esp_http_client_handle_t client,
+                          esp_err_t err,
+                          int status,
+                          int64_t started_us,
+                          size_t response_len,
+                          int result_count,
+                          int stale_count,
+                          int accepted_count,
+                          uint32_t poll_seq,
+                          const net_diag_snapshot_t *before,
+                          const net_diag_snapshot_t *after)
+{
+    int sock_errno = 0;
+    esp_http_client_transport_t transport = HTTP_TRANSPORT_UNKNOWN;
+    int heap_delta = 0;
+    uint32_t heap_free = 0;
+    uint32_t heap_min = 0;
+    uint32_t heap_largest = 0;
+    int rssi = 0;
+    int rssi_ok = 0;
+    bool ok = false;
+
+    if (client) {
+        if (status < 0) {
+            status = esp_http_client_get_status_code(client);
+        }
+        sock_errno = esp_http_client_get_errno(client);
+        transport = esp_http_client_get_transport_type(client);
+    }
+
+    if (after) {
+        heap_free = after->free_heap;
+        heap_min = after->min_heap;
+        heap_largest = after->largest_block;
+        if (after->rssi_valid) {
+            rssi = after->rssi;
+            rssi_ok = 1;
+        }
+    }
+    if (before && after) {
+        heap_delta = (int)after->free_heap - (int)before->free_heap;
+    }
+
+    ok = (err == ESP_OK && status == 200);
+    if (ok) {
+        ESP_LOGI(TAG,
+                 "NETDIAG op=%s ok=1 status=%d err=%s(%d) errno=%d(%s) transport=%s "
+                 "dur_ms=%lu poll_seq=%u res=%d stale=%d new=%d body_bytes=%u "
+                 "heap_free=%lu heap_delta=%d heap_min=%lu heap_largest=%lu "
+                 "rssi=%d rssi_ok=%d",
+                 operation ? operation : "telegram_http",
+                 status,
+                 esp_err_to_name(err), err,
+                 sock_errno,
+                 sock_errno ? strerror(sock_errno) : "n/a",
+                 http_transport_name(transport),
+                 (unsigned long)elapsed_ms_since(started_us),
+                 (unsigned)poll_seq,
+                 result_count,
+                 stale_count,
+                 accepted_count,
+                 (unsigned)response_len,
+                 (unsigned long)heap_free,
+                 heap_delta,
+                 (unsigned long)heap_min,
+                 (unsigned long)heap_largest,
+                 rssi,
+                 rssi_ok);
+    } else {
+        ESP_LOGW(TAG,
+                 "NETDIAG op=%s ok=0 status=%d err=%s(%d) errno=%d(%s) transport=%s "
+                 "dur_ms=%lu poll_seq=%u res=%d stale=%d new=%d body_bytes=%u "
+                 "heap_free=%lu heap_delta=%d heap_min=%lu heap_largest=%lu "
+                 "rssi=%d rssi_ok=%d",
+                 operation ? operation : "telegram_http",
+                 status,
+                 esp_err_to_name(err), err,
+                 sock_errno,
+                 sock_errno ? strerror(sock_errno) : "n/a",
+                 http_transport_name(transport),
+                 (unsigned long)elapsed_ms_since(started_us),
+                 (unsigned)poll_seq,
+                 result_count,
+                 stale_count,
+                 accepted_count,
+                 (unsigned)response_len,
+                 (unsigned long)heap_free,
+                 heap_delta,
+                 (unsigned long)heap_min,
+                 (unsigned long)heap_largest,
+                 rssi,
+                 rssi_ok);
     }
 }
 
@@ -237,9 +378,14 @@ static void telegram_send_typing_indicator(void)
 {
     telegram_http_ctx_t *ctx = NULL;
     esp_http_client_handle_t client = NULL;
-    esp_err_t err;
-    int status = 0;
+    esp_err_t err = ESP_FAIL;
+    int status = -1;
+    int64_t started_us = esp_timer_get_time();
+    net_diag_snapshot_t snapshot_before = {0};
+    net_diag_snapshot_t snapshot_after = {0};
     char url[256];
+
+    capture_net_diag_snapshot(&snapshot_before);
 
     if (!telegram_is_configured() || s_chat_id == 0) {
         return;
@@ -280,6 +426,9 @@ static void telegram_send_typing_indicator(void)
     if (!client) {
         free(body);
         free(ctx);
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("sendChatAction", NULL, ESP_FAIL, -1, started_us, 0, 0, 0, 0, 0,
+                      &snapshot_before, &snapshot_after);
         return;
     }
 
@@ -292,10 +441,15 @@ static void telegram_send_typing_indicator(void)
         status = esp_http_client_get_status_code(client);
         if (status != 200) {
             log_http_failure("sendChatAction", client, ESP_FAIL, status);
+            err = ESP_FAIL;
         }
     } else {
         log_http_failure("sendChatAction", client, err, -1);
     }
+
+    capture_net_diag_snapshot(&snapshot_after);
+    log_http_diag("sendChatAction", client, err, status, started_us, ctx->len, 0, 0, 0, 0,
+                  &snapshot_before, &snapshot_after);
 
     esp_http_client_cleanup(client);
     free(body);
@@ -320,7 +474,13 @@ esp_err_t telegram_send(const char *text)
 {
     telegram_http_ctx_t *ctx = NULL;
     esp_http_client_handle_t client = NULL;
-    esp_err_t err;
+    esp_err_t err = ESP_FAIL;
+    int status = -1;
+    int64_t started_us = esp_timer_get_time();
+    net_diag_snapshot_t snapshot_before = {0};
+    net_diag_snapshot_t snapshot_after = {0};
+
+    capture_net_diag_snapshot(&snapshot_before);
 
     if (!telegram_is_configured() || s_chat_id == 0) {
         ESP_LOGW(TAG, "Cannot send - not configured or no chat ID");
@@ -364,6 +524,9 @@ esp_err_t telegram_send(const char *text)
     client = esp_http_client_init(&config);
     if (!client) {
         ESP_LOGE(TAG, "Failed to init HTTP client");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("sendMessage", NULL, ESP_FAIL, -1, started_us, 0, 0, 0, 0, 0,
+                      &snapshot_before, &snapshot_after);
         free(body);
         free(ctx);
         return ESP_FAIL;
@@ -376,7 +539,7 @@ esp_err_t telegram_send(const char *text)
     err = esp_http_client_perform(client);
 
     if (err == ESP_OK) {
-        int status = esp_http_client_get_status_code(client);
+        status = esp_http_client_get_status_code(client);
         if (status != 200) {
             log_http_failure("sendMessage", client, ESP_FAIL, status);
             if (ctx->buf[0] != '\0') {
@@ -385,6 +548,10 @@ esp_err_t telegram_send(const char *text)
             err = ESP_FAIL;
         }
     }
+
+    capture_net_diag_snapshot(&snapshot_after);
+    log_http_diag("sendMessage", client, err, status, started_us, ctx->len, 0, 0, 0, 0,
+                  &snapshot_before, &snapshot_after);
 
     esp_http_client_cleanup(client);
     free(body);
@@ -404,9 +571,18 @@ static esp_err_t telegram_poll(void)
     char offset_buf[24];
     telegram_http_ctx_t *ctx = NULL;
     esp_http_client_handle_t client = NULL;
-    esp_err_t err;
-    int status;
+    esp_err_t err = ESP_FAIL;
+    int status = -1;
     int64_t next_offset;
+    int64_t started_us = esp_timer_get_time();
+    uint32_t poll_seq = ++s_poll_sequence;
+    int result_count = 0;
+    int stale_count = 0;
+    int accepted_count = 0;
+    net_diag_snapshot_t snapshot_before = {0};
+    net_diag_snapshot_t snapshot_after = {0};
+
+    capture_net_diag_snapshot(&snapshot_before);
 
     if (s_last_update_id == INT64_MAX) {
         next_offset = s_last_update_id;
@@ -416,6 +592,9 @@ static esp_err_t telegram_poll(void)
 
     if (!format_int64_decimal(next_offset, offset_buf, sizeof(offset_buf))) {
         ESP_LOGE(TAG, "Failed to format Telegram update offset");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_FAIL, -1, started_us, 0,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         return ESP_FAIL;
     }
 
@@ -424,6 +603,9 @@ static esp_err_t telegram_poll(void)
 
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_ERR_NO_MEM, -1, started_us, 0,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         return ESP_ERR_NO_MEM;
     }
 
@@ -438,6 +620,9 @@ static esp_err_t telegram_poll(void)
     client = esp_http_client_init(&config);
     if (!client) {
         ESP_LOGE(TAG, "Failed to init HTTP client for poll");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_FAIL, -1, started_us, 0,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         free(ctx);
         return ESP_FAIL;
     }
@@ -447,6 +632,9 @@ static esp_err_t telegram_poll(void)
 
     if (err != ESP_OK || status != 200) {
         log_http_failure("getUpdates", client, err, status);
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", client, err, status, started_us, ctx->len,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         esp_http_client_cleanup(client);
         free(ctx);
         return ESP_FAIL;
@@ -466,11 +654,17 @@ static esp_err_t telegram_poll(void)
             } else {
                 ESP_LOGW(TAG, "Recovered from truncated response; update_id unavailable");
             }
+            capture_net_diag_snapshot(&snapshot_after);
+            log_http_diag("getUpdates", NULL, ESP_OK, status, started_us, ctx->len,
+                          0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
             free(ctx);
             return ESP_OK;
         }
 
         ESP_LOGE(TAG, "Truncated response without parseable update_id");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_ERR_INVALID_RESPONSE, status, started_us, ctx->len,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         free(ctx);
         return ESP_FAIL;
     }
@@ -479,6 +673,9 @@ static esp_err_t telegram_poll(void)
     cJSON *root = cJSON_Parse(ctx->buf);
     if (!root) {
         ESP_LOGE(TAG, "Failed to parse response");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_ERR_INVALID_RESPONSE, status, started_us, ctx->len,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         free(ctx);
         return ESP_FAIL;
     }
@@ -486,6 +683,9 @@ static esp_err_t telegram_poll(void)
     cJSON *ok = cJSON_GetObjectItem(root, "ok");
     if (!ok || !cJSON_IsTrue(ok)) {
         ESP_LOGE(TAG, "API returned not ok");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_FAIL, status, started_us, ctx->len,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         cJSON_Delete(root);
         free(ctx);
         return ESP_FAIL;
@@ -493,6 +693,14 @@ static esp_err_t telegram_poll(void)
 
     cJSON *result = cJSON_GetObjectItem(root, "result");
     if (!result || !cJSON_IsArray(result)) {
+        if (s_stale_only_poll_streak > 0) {
+            ESP_LOGI(TAG, "Stale-only poll streak cleared at %u (empty result)",
+                     (unsigned)s_stale_only_poll_streak);
+            s_stale_only_poll_streak = 0;
+        }
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("getUpdates", NULL, ESP_OK, status, started_us, ctx->len,
+                      0, 0, 0, poll_seq, &snapshot_before, &snapshot_after);
         cJSON_Delete(root);
         free(ctx);
         return ESP_OK;  // No updates, that's fine
@@ -502,6 +710,7 @@ static esp_err_t telegram_poll(void)
     cJSON_ArrayForEach(update, result) {
         cJSON *update_id = cJSON_GetObjectItem(update, "update_id");
         int64_t incoming_update_id = -1;
+        result_count++;
         if (!update_id || !cJSON_IsNumber(update_id)) {
             ESP_LOGW(TAG, "Skipping update without numeric update_id");
             continue;
@@ -511,6 +720,7 @@ static esp_err_t telegram_poll(void)
         // Telegram update IDs fit safely within this range.
         incoming_update_id = (int64_t)update_id->valuedouble;
         if (incoming_update_id <= s_last_update_id) {
+            stale_count++;
             char incoming_buf[24];
             char last_buf[24];
             if (format_int64_decimal(incoming_update_id, incoming_buf, sizeof(incoming_buf)) &&
@@ -523,6 +733,7 @@ static esp_err_t telegram_poll(void)
             continue;
         }
         s_last_update_id = incoming_update_id;
+        accepted_count++;
 
         cJSON *message = cJSON_GetObjectItem(update, "message");
         if (!message) continue;
@@ -586,6 +797,40 @@ static esp_err_t telegram_poll(void)
         }
     }
 
+    if (result_count > 0 && stale_count == result_count && accepted_count == 0) {
+        s_stale_only_poll_streak++;
+        if ((s_stale_only_poll_streak % TELEGRAM_STALE_POLL_LOG_INTERVAL) == 0) {
+            ESP_LOGW(TAG, "Stale-only poll streak=%u (poll_seq=%u, result_count=%d)",
+                     (unsigned)s_stale_only_poll_streak, (unsigned)poll_seq, result_count);
+        }
+
+        int64_t now_us = esp_timer_get_time();
+        bool cooldown_elapsed = (s_last_stale_resync_us == 0) ||
+                                ((now_us - s_last_stale_resync_us) >=
+                                 ((int64_t)TELEGRAM_STALE_POLL_RESYNC_COOLDOWN_MS * 1000LL));
+        if (s_stale_only_poll_streak >= TELEGRAM_STALE_POLL_RESYNC_STREAK && cooldown_elapsed) {
+            ESP_LOGW(TAG, "Stale-only poll anomaly: streak=%u; forcing Telegram resync",
+                     (unsigned)s_stale_only_poll_streak);
+            s_last_stale_resync_us = now_us;
+            esp_err_t flush_err = telegram_flush_pending_updates();
+            if (flush_err != ESP_OK) {
+                ESP_LOGW(TAG, "Auto-resync failed: %s", esp_err_to_name(flush_err));
+            } else {
+                ESP_LOGI(TAG, "Auto-resync completed");
+            }
+            s_stale_only_poll_streak = 0;
+        }
+    } else if (s_stale_only_poll_streak > 0) {
+        ESP_LOGI(TAG, "Stale-only poll streak cleared at %u",
+                 (unsigned)s_stale_only_poll_streak);
+        s_stale_only_poll_streak = 0;
+    }
+
+    capture_net_diag_snapshot(&snapshot_after);
+    log_http_diag("getUpdates", NULL, ESP_OK, status, started_us, ctx->len,
+                  result_count, stale_count, accepted_count, poll_seq,
+                  &snapshot_before, &snapshot_after);
+
     cJSON_Delete(root);
     free(ctx);
     return ESP_OK;
@@ -632,14 +877,22 @@ static esp_err_t telegram_flush_pending_updates(void)
     char url[384];
     telegram_http_ctx_t *ctx = NULL;
     esp_http_client_handle_t client = NULL;
-    esp_err_t err;
-    int status;
+    esp_err_t err = ESP_FAIL;
+    int status = -1;
+    int64_t started_us = esp_timer_get_time();
+    net_diag_snapshot_t snapshot_before = {0};
+    net_diag_snapshot_t snapshot_after = {0};
+
+    capture_net_diag_snapshot(&snapshot_before);
 
     snprintf(url, sizeof(url), "%s%s/getUpdates?timeout=0&limit=1&offset=-1",
              TELEGRAM_API_URL, s_bot_token);
 
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("flush getUpdates", NULL, ESP_ERR_NO_MEM, -1, started_us, 0,
+                      0, 0, 0, 0, &snapshot_before, &snapshot_after);
         return ESP_ERR_NO_MEM;
     }
 
@@ -653,6 +906,9 @@ static esp_err_t telegram_flush_pending_updates(void)
 
     client = esp_http_client_init(&config);
     if (!client) {
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("flush getUpdates", NULL, ESP_FAIL, -1, started_us, 0,
+                      0, 0, 0, 0, &snapshot_before, &snapshot_after);
         free(ctx);
         return ESP_FAIL;
     }
@@ -662,6 +918,9 @@ static esp_err_t telegram_flush_pending_updates(void)
 
     if (err != ESP_OK || status != 200) {
         log_http_failure("flush getUpdates", client, err, status);
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("flush getUpdates", client, err, status, started_us, ctx->len,
+                      0, 0, 0, 0, &snapshot_before, &snapshot_after);
         esp_http_client_cleanup(client);
         free(ctx);
         return ESP_FAIL;
@@ -673,6 +932,7 @@ static esp_err_t telegram_flush_pending_updates(void)
     int64_t latest_update_id = 0;
     if (telegram_extract_max_update_id(ctx->buf, &latest_update_id)) {
         s_last_update_id = latest_update_id;
+        s_stale_only_poll_streak = 0;
         char update_id_buf[24];
         if (format_int64_decimal(s_last_update_id, update_id_buf, sizeof(update_id_buf))) {
             ESP_LOGI(TAG, "Flushed pending updates up to update_id=%s", update_id_buf);
@@ -682,6 +942,10 @@ static esp_err_t telegram_flush_pending_updates(void)
     } else {
         ESP_LOGI(TAG, "No pending Telegram updates to flush");
     }
+
+    capture_net_diag_snapshot(&snapshot_after);
+    log_http_diag("flush getUpdates", NULL, ESP_OK, status, started_us, ctx->len,
+                  0, 0, 0, 0, &snapshot_before, &snapshot_after);
 
     free(ctx);
 #endif

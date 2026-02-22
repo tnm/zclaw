@@ -61,6 +61,11 @@ typedef enum {
 
 #define LLM_MAX_TOKENS          1024
 #define HTTP_TIMEOUT_MS         30000   // 30 seconds for API calls
+#define LLM_HTTP_TIMEOUT_MS     20000   // 20 seconds for LLM API calls
+#define LLM_MAX_RETRIES         3       // Max LLM attempts per round (including first attempt)
+#define LLM_RETRY_BASE_MS       2000    // Initial retry delay after a failed LLM call
+#define LLM_RETRY_MAX_MS        10000   // Maximum exponential retry delay
+#define LLM_RETRY_BUDGET_MS     45000   // Max wall-clock retry budget per LLM round
 
 // -----------------------------------------------------------------------------
 // System Prompt
@@ -123,6 +128,9 @@ typedef enum {
 #define TELEGRAM_POLL_INTERVAL  100     // ms between poll attempts on error
 #define TELEGRAM_MAX_MSG_LEN    4096    // Max message length
 #define TELEGRAM_FLUSH_ON_START 1       // Drop stale pending updates at startup
+#define TELEGRAM_STALE_POLL_LOG_INTERVAL 4          // Log every N stale-only polls
+#define TELEGRAM_STALE_POLL_RESYNC_STREAK 8         // Trigger auto-resync after this streak
+#define TELEGRAM_STALE_POLL_RESYNC_COOLDOWN_MS 60000 // Min gap between auto-resync attempts
 #define START_COMMAND_COOLDOWN_MS 30000 // Debounce repeated Telegram /start bursts
 #define MESSAGE_REPLAY_COOLDOWN_MS 20000 // Suppress repeated identical non-command bursts
 
@@ -163,8 +171,8 @@ typedef enum {
 // -----------------------------------------------------------------------------
 // Rate Limiting
 // -----------------------------------------------------------------------------
-#define RATELIMIT_MAX_PER_HOUR      30      // Max LLM requests per hour
-#define RATELIMIT_MAX_PER_DAY       200     // Max LLM requests per day
+#define RATELIMIT_MAX_PER_HOUR      100     // Max LLM requests per hour
+#define RATELIMIT_MAX_PER_DAY       1000    // Max LLM requests per day
 #define RATELIMIT_ENABLED           1       // Set to 0 to disable
 
 #endif // CONFIG_H

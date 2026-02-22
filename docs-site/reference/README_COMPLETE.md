@@ -373,8 +373,8 @@ Edit `main/config.h` to customize:
 #define LLM_DEFAULT_MODEL_OPENROUTER "minimax/minimax-m2.5" // OpenRouter default
 #define LLM_MAX_TOKENS 1024                   // Max response tokens
 #define MAX_HISTORY_TURNS 8                   // Conversation history length
-#define RATELIMIT_MAX_PER_HOUR 30             // LLM requests per hour
-#define RATELIMIT_MAX_PER_DAY 200             // LLM requests per day
+#define RATELIMIT_MAX_PER_HOUR 100            // LLM requests per hour
+#define RATELIMIT_MAX_PER_DAY 1000            // LLM requests per day
 ```
 
 Board-specific GPIO safety range is configured in `idf.py menuconfig` under

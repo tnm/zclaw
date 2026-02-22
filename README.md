@@ -51,6 +51,7 @@ Important setup notes:
 - `bootstrap.sh` clones/updates the repo and then runs `./install.sh`.
 - For encrypted credentials in flash, use secure mode (`--flash-mode secure` in install flow, or `./scripts/flash-secure.sh` directly).
 - After flashing, provision WiFi + LLM credentials with `./scripts/provision.sh`.
+- Default LLM rate limits are `100/hour` and `1000/day`; change compile-time limits in `main/config.h` (`RATELIMIT_*`).
 - Telegram control commands: `/start` and `/help` show command help, `/settings` shows bot status, `/stop` pauses message intake, `/resume` re-enables message intake.
 - Quick validation path: run `./scripts/web-relay.sh` and send a test message to confirm the device can answer.
 - If serial port is busy, run `./scripts/release-port.sh` and retry.

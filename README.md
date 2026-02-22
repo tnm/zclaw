@@ -76,26 +76,7 @@ Tests reports are very welcome!
 
 Recommended starter board: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/Seeed-XIAO-ESP32C3-p-5431.html)
 
-## Useful Scripts
-
-- `./scripts/build.sh` - Build firmware
-- `./scripts/flash.sh` - Flash firmware
-- `./scripts/flash-secure.sh` - Flash with encryption
-- `./scripts/provision.sh` - Provision credentials to NVS
-- `./scripts/provision-dev.sh` - Local profile wrapper for fast repeat provisioning (`~/.config/zclaw/dev.env`)
-- `./scripts/erase.sh` - Erase NVS only (`--nvs`) or full flash (`--all`) with guardrails
-- `./scripts/monitor.sh` - Serial monitor
-- `./scripts/emulate.sh` - Run QEMU profile
-- `./scripts/web-relay.sh` - Hosted relay + mobile chat UI
-- `./scripts/benchmark.sh` - Benchmark relay/serial latency
-- `./scripts/docs-site.sh` - Serve docs site
-- `./scripts/test.sh` - Run host/device test flows
-- `./scripts/test-api.sh` - Run live provider API checks (manual/local)
-
 ## Local Dev & Hacking
-
-For daily iteration, use the local dev guide:
-- [Local Dev & Hacking (docs)](https://zclaw.dev/local-dev.html)
 
 Typical fast loop:
 
@@ -115,6 +96,20 @@ Profile setup once, then re-use:
 ./scripts/provision-dev.sh --show-config
 ./scripts/provision-dev.sh
 ```
+
+More details in the [Local Dev & Hacking guide](https://zclaw.dev/local-dev.html).
+
+### Other Useful Scripts
+
+- `./scripts/flash-secure.sh` - Flash with encryption
+- `./scripts/provision.sh` - Provision credentials to NVS
+- `./scripts/erase.sh` - Erase NVS only (`--nvs`) or full flash (`--all`) with guardrails
+- `./scripts/monitor.sh` - Serial monitor
+- `./scripts/emulate.sh` - Run QEMU profile
+- `./scripts/web-relay.sh` - Hosted relay + mobile chat UI
+- `./scripts/benchmark.sh` - Benchmark relay/serial latency
+- `./scripts/test.sh` - Run host/device test flows
+- `./scripts/test-api.sh` - Run live provider API checks (manual/local)
 
 ## Size Breakdown
 

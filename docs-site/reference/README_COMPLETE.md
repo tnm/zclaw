@@ -300,6 +300,8 @@ Or use the convenience scripts:
 ./scripts/flash-secure.sh   # Flash with encryption (dev mode, key readable)
 ./scripts/flash-secure.sh --production  # Flash with key read-protected
 ./scripts/provision.sh      # Provision WiFi/API credentials into NVS
+./scripts/erase.sh --nvs    # Erase only credentials/settings
+./scripts/erase.sh --all    # Full flash wipe (firmware + settings)
 ./scripts/monitor.sh        # Serial monitor
 ./scripts/release-port.sh   # Release busy serial port holders
 ./scripts/emulate.sh        # Run in QEMU emulator
@@ -326,6 +328,10 @@ Or use the convenience scripts:
 `provision.sh` auto-detects your host WiFi SSID when possible.
 For Anthropic, it also sends a quick `hello` API check after key entry.
 Use `--skip-api-check` to bypass verification.
+
+Reset options:
+- `./scripts/erase.sh --nvs --port <serial-port>` to wipe stored credentials/settings only.
+- `./scripts/erase.sh --all --port <serial-port>` to wipe full flash (requires explicit confirmation or `--yes`).
 
 
 ## Architecture
@@ -399,6 +405,7 @@ zclaw/
 │   ├── flash.sh        # Flash to device
 │   ├── flash-secure.sh # Flash with encryption
 │   ├── provision.sh    # Provision credentials to NVS
+│   ├── erase.sh        # Erase NVS or full flash with guardrails
 │   ├── monitor.sh      # Serial monitor
 │   ├── release-port.sh # Release busy serial port holders
 │   ├── emulate.sh      # QEMU emulator

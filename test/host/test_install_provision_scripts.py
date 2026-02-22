@@ -15,6 +15,7 @@ TEST_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = TEST_DIR.parent.parent
 INSTALL_SH = PROJECT_ROOT / "install.sh"
 PROVISION_SH = PROJECT_ROOT / "scripts" / "provision.sh"
+ERASE_SH = PROJECT_ROOT / "scripts" / "erase.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -208,6 +209,182 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Verifying OpenRouter API key", output)
         self.assertIn("Error: API check failed in --yes mode.", output)
+
+    def test_erase_requires_explicit_mode(self) -> None:
+        proc = subprocess.run(
+            [
+                str(ERASE_SH),
+                "--yes",
+                "--port",
+                "/tmp/not-a-real-serial-port",
+            ],
+            cwd=PROJECT_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("choose one of --nvs or --all", output)
+
+    def test_erase_all_requires_yes_in_non_interactive_shell(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+
+            proc = subprocess.run(
+                [
+                    str(ERASE_SH),
+                    "--all",
+                    "--port",
+                    str(fake_port),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("interactive confirmation required in non-interactive mode", output)
+
+    def test_erase_nvs_yes_executes_parttool_erase_partition(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            parttool = idf_dir / "components" / "partition_table" / "parttool.py"
+            parttool.parent.mkdir(parents=True, exist_ok=True)
+            parttool.write_text("# parttool stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "python3",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ERASE_ARGS_FILE\"\n",
+            )
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+            env["TERM"] = "dumb"
+            env["ERASE_ARGS_FILE"] = str(tmp / "erase-args.txt")
+
+            proc = subprocess.run(
+                [
+                    str(ERASE_SH),
+                    "--nvs",
+                    "--yes",
+                    "--port",
+                    str(fake_port),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            args_text = (tmp / "erase-args.txt").read_text(encoding="utf-8")
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("erase_partition", args_text)
+        self.assertIn("--partition-name", args_text)
+        self.assertIn("nvs", args_text)
+
+    def test_erase_all_yes_executes_idf_erase_flash(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ERASE_ARGS_FILE\"\n",
+            )
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
+            env["TERM"] = "dumb"
+            env["ERASE_ARGS_FILE"] = str(tmp / "erase-args.txt")
+
+            proc = subprocess.run(
+                [
+                    str(ERASE_SH),
+                    "--all",
+                    "--yes",
+                    "--port",
+                    str(fake_port),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            args_text = (tmp / "erase-args.txt").read_text(encoding="utf-8")
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("-p", args_text)
+        self.assertIn(str(fake_port), args_text)
+        self.assertIn("erase-flash", args_text)
 
 
 if __name__ == "__main__":

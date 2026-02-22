@@ -119,6 +119,16 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
         </section>
 
         <section class="section">
+          <h2>Reset / Erase</h2>
+          <pre># Erase only saved credentials/settings (keeps firmware)
+./scripts/erase.sh --nvs --port /dev/cu.usbmodem1101
+
+# Full factory wipe (firmware + settings)
+./scripts/erase.sh --all --port /dev/cu.usbmodem1101</pre>
+          <p class="inline-note">Guardrails: you must explicitly choose <code>--nvs</code> or <code>--all</code>. Full erase requires confirmation (or <code>--yes</code> in non-interactive runs).</p>
+        </section>
+
+        <section class="section">
           <h2>Advanced Board Config</h2>
           <pre>source ~/esp/esp-idf/export.sh
 idf.py menuconfig</pre>

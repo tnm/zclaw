@@ -77,7 +77,9 @@
 
         <section class="section">
           <h2>Factory Reset</h2>
-          <p>Default: hold GPIO9 low for 5+ seconds during startup to erase settings. Adjust per board wiring in firmware config.</p>
+          <p>Default hardware path: hold GPIO9 low for 5+ seconds during startup to erase settings. Adjust per board wiring in firmware config.</p>
+          <p>Host script path: use <code>./scripts/erase.sh --nvs</code> to erase only credentials/settings, or <code>./scripts/erase.sh --all</code> for a full flash wipe.</p>
+          <p class="inline-note">Guardrails: erase mode must be explicit; full flash erase requires interactive confirmation (or <code>--yes</code> in non-interactive flows).</p>
         </section>
 
         <section class="section">
@@ -87,6 +89,8 @@
 ./scripts/flash.sh
 ./scripts/flash-secure.sh --production
 ./scripts/provision.sh --port &lt;serial-port&gt;
+./scripts/erase.sh --nvs --port &lt;serial-port&gt;
+./scripts/erase.sh --all --port &lt;serial-port&gt;
 ./scripts/monitor.sh &lt;serial-port&gt;</pre>
         </section>
 

@@ -157,7 +157,7 @@ typedef enum {
 // -----------------------------------------------------------------------------
 // Boot Loop Protection
 // -----------------------------------------------------------------------------
-#define MAX_BOOT_FAILURES       3       // Enter safe mode after N consecutive failures
+#define MAX_BOOT_FAILURES       4       // Enter safe mode after N consecutive failures
 #define BOOT_SUCCESS_DELAY_MS   30000   // Clear boot counter after this time connected
 
 // -----------------------------------------------------------------------------

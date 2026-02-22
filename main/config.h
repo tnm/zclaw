@@ -124,6 +124,7 @@ typedef enum {
 #define TELEGRAM_MAX_MSG_LEN    4096    // Max message length
 #define TELEGRAM_FLUSH_ON_START 1       // Drop stale pending updates at startup
 #define START_COMMAND_COOLDOWN_MS 30000 // Debounce repeated Telegram /start bursts
+#define MESSAGE_REPLAY_COOLDOWN_MS 20000 // Suppress repeated identical non-command bursts
 
 // -----------------------------------------------------------------------------
 // Cron / Scheduler

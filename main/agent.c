@@ -28,6 +28,8 @@ static QueueHandle_t s_input_queue;
 static QueueHandle_t s_channel_output_queue;
 static QueueHandle_t s_telegram_output_queue;
 static int64_t s_last_start_response_us = 0;
+static int64_t s_last_non_command_response_us = 0;
+static char s_last_non_command_text[CHANNEL_RX_BUF_SIZE] = {0};
 static bool s_messages_paused = false;
 
 // Conversation history (rolling message buffer)
@@ -210,6 +212,19 @@ static bool is_command(const char *message, const char *name)
     return true;
 }
 
+static bool is_slash_command(const char *message)
+{
+    if (!message) {
+        return false;
+    }
+
+    while (*message && is_whitespace_char(*message)) {
+        message++;
+    }
+
+    return *message == '/';
+}
+
 static void handle_start_command(void)
 {
     static const char *START_HELP_TEXT =
@@ -313,6 +328,29 @@ static void process_message(const char *user_message)
         handle_start_command();
         metrics_log_request(&metrics, "start_handled");
         return;
+    }
+
+    if (!is_slash_command(user_message)) {
+        int64_t now_us = esp_timer_get_time();
+        uint64_t since_last_ms = 0;
+
+        if (s_last_non_command_response_us > 0 && now_us > s_last_non_command_response_us) {
+            since_last_ms = (uint64_t)(now_us - s_last_non_command_response_us) / 1000ULL;
+        }
+
+        if (s_last_non_command_text[0] != '\0' &&
+            strcmp(user_message, s_last_non_command_text) == 0 &&
+            s_last_non_command_response_us > 0 &&
+            since_last_ms < MESSAGE_REPLAY_COOLDOWN_MS) {
+            ESP_LOGW(TAG, "Suppressing repeated message replay (%" PRIu64 "ms since last response)",
+                     since_last_ms);
+            metrics_log_request(&metrics, "replay_suppressed");
+            return;
+        }
+
+        strncpy(s_last_non_command_text, user_message, sizeof(s_last_non_command_text) - 1);
+        s_last_non_command_text[sizeof(s_last_non_command_text) - 1] = '\0';
+        s_last_non_command_response_us = now_us;
     }
 
     // Get tools
@@ -486,6 +524,8 @@ void agent_test_reset(void)
     s_channel_output_queue = NULL;
     s_telegram_output_queue = NULL;
     s_last_start_response_us = 0;
+    s_last_non_command_response_us = 0;
+    memset(s_last_non_command_text, 0, sizeof(s_last_non_command_text));
     s_messages_paused = false;
 }
 

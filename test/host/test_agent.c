@@ -352,6 +352,41 @@ TEST(help_and_settings_commands_bypass_llm)
     return 0;
 }
 
+TEST(repeated_non_command_is_suppressed)
+{
+    QueueHandle_t channel_q;
+    QueueHandle_t telegram_q;
+    char text[TELEGRAM_MAX_MSG_LEN];
+    const char *success =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"hi there\"}],\"stop_reason\":\"end_turn\"}";
+
+    reset_state();
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    telegram_q = xQueueCreate(4, sizeof(telegram_msg_t));
+    ASSERT(channel_q != NULL);
+    ASSERT(telegram_q != NULL);
+    agent_test_set_queues(channel_q, telegram_q);
+
+    ASSERT(mock_llm_push_result(ESP_OK, success));
+    agent_test_process_message("What can you do");
+    ASSERT(mock_llm_request_count() == 1);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "hi there");
+    ASSERT(recv_telegram_text(telegram_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "hi there");
+
+    // Immediate repeat should be dropped and not trigger another LLM call.
+    agent_test_process_message("What can you do");
+    ASSERT(mock_llm_request_count() == 1);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 0);
+    ASSERT(recv_telegram_text(telegram_q, text, sizeof(text)) == 0);
+
+    vQueueDelete(channel_q);
+    vQueueDelete(telegram_q);
+    return 0;
+}
+
 int test_agent_all(void)
 {
     int failures = 0;
@@ -409,6 +444,13 @@ int test_agent_all(void)
 
     printf("  help_and_settings_commands_bypass_llm... ");
     if (test_help_and_settings_commands_bypass_llm() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  repeated_non_command_is_suppressed... ");
+    if (test_repeated_non_command_is_suppressed() == 0) {
         printf("OK\n");
     } else {
         failures++;

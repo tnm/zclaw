@@ -125,17 +125,17 @@ More details in the [Local Dev & Hacking guide](https://zclaw.dev/local-dev.html
 
 ## Size Breakdown
 
-Current default `esp32s3` breakdown (`idf.py -B build size-components`, flash totals):
+Current default `esp32s3` breakdown (grouped loadable image bytes from `idf.py -B build size-components`; rows sum to total image size):
 
 | Segment | Bytes | Size | Share |
 | --- | ---: | ---: | ---: |
-| zclaw app logic (`libmain.a`) | `26430` | ~25.8 KiB | ~3.1% |
-| Wi-Fi + networking stack | `375278` | ~366.5 KiB | ~43.7% |
-| TLS/crypto stack | `125701` | ~122.8 KiB | ~14.7% |
-| cert bundle + app metadata | `92654` | ~90.5 KiB | ~10.8% |
-| other ESP-IDF/runtime/drivers/libc | `237889` | ~232.3 KiB | ~27.7% |
+| zclaw app logic (`libmain.a`) | `35742` | ~34.9 KiB | ~4.1% |
+| Wi-Fi + networking stack | `397356` | ~388.0 KiB | ~45.7% |
+| TLS/crypto stack | `112922` | ~110.3 KiB | ~13.0% |
+| cert bundle + app metadata | `99722` | ~97.4 KiB | ~11.5% |
+| other ESP-IDF/runtime/drivers/libc | `224096` | ~218.8 KiB | ~25.8% |
 
-`zclaw.bin` from the same build is `865888` bytes (~845.6 KiB), which stays under the cap.
+Total image size from this build is `869838` bytes; padded `zclaw.bin` is `869952` bytes (~849.6 KiB), still under the cap.
 
 ## Latency Benchmarking
 

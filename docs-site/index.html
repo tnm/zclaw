@@ -77,20 +77,20 @@ Agent: Created schedule #7: once in 20 min -> check the garage sensor</pre>
         <section class="section">
           <h2>What "888 KiB" Means</h2>
           <p>The <strong>888 KiB</strong> target is an all-in firmware cap, not just zclaw application logic. It includes app code plus ESP-IDF/FreeRTOS runtime, Wi-Fi/networking, TLS/crypto, and cert bundle overhead.</p>
-          <p>Current default <code>esp32s3</code> build (<code>idf.py -B build size-components</code>, flash totals):</p>
+          <p>Current default <code>esp32s3</code> build (grouped loadable image bytes from <code>idf.py -B build size-components</code>; rows sum to total image size):</p>
           <table>
             <thead>
               <tr><th>Layer</th><th>Size</th><th>Share</th></tr>
             </thead>
             <tbody>
-              <tr><td>zclaw app logic (<code>libmain.a</code>)</td><td>26,430 bytes (~25.8 KiB)</td><td>~3.1%</td></tr>
-              <tr><td>Wi-Fi + networking stack</td><td>375,278 bytes (~366.5 KiB)</td><td>~43.7%</td></tr>
-              <tr><td>TLS/crypto stack</td><td>125,701 bytes (~122.8 KiB)</td><td>~14.7%</td></tr>
-              <tr><td>Cert bundle + app metadata</td><td>92,654 bytes (~90.5 KiB)</td><td>~10.8%</td></tr>
-              <tr><td>Other ESP-IDF/runtime/drivers/libc</td><td>237,889 bytes (~232.3 KiB)</td><td>~27.7%</td></tr>
+              <tr><td>zclaw app logic (<code>libmain.a</code>)</td><td>35,742 bytes (~34.9 KiB)</td><td>~4.1%</td></tr>
+              <tr><td>Wi-Fi + networking stack</td><td>397,356 bytes (~388.0 KiB)</td><td>~45.7%</td></tr>
+              <tr><td>TLS/crypto stack</td><td>112,922 bytes (~110.3 KiB)</td><td>~13.0%</td></tr>
+              <tr><td>Cert bundle + app metadata</td><td>99,722 bytes (~97.4 KiB)</td><td>~11.5%</td></tr>
+              <tr><td>Other ESP-IDF/runtime/drivers/libc</td><td>224,096 bytes (~218.8 KiB)</td><td>~25.8%</td></tr>
             </tbody>
           </table>
-          <p class="inline-note"><code>zclaw.bin</code> from the same build is <strong>865,888 bytes</strong> (~845.6 KiB), under the 888 KiB cap.</p>
+          <p class="inline-note">Total image size from this build is <strong>869,838 bytes</strong>; padded <code>zclaw.bin</code> is <strong>869,952 bytes</strong> (~849.6 KiB), under the 888 KiB cap.</p>
         </section>
 
         <section class="section">

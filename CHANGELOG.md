@@ -9,6 +9,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Changed
 - _None yet._
 
+## [2.5.1] - 2026-02-22
+
+### Changed
+- Capability-priority guidance in the system prompt now emphasizes custom tools, schedules, memory, and GPIO ahead of optional I2C details when users ask what zclaw can do.
+
 ## [2.5.0] - 2026-02-22
 
 ### Added

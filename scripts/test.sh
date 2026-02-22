@@ -60,6 +60,7 @@ run_host_tests() {
         test_agent.c \
         test_tools_gpio_policy.c \
         test_llm_auth.c \
+        test_wifi_credentials.c \
         test_runner.c \
         mock_esp.c \
         mock_llm.c \
@@ -74,6 +75,7 @@ run_host_tests() {
         ../../main/boot_guard.c \
         ../../main/memory_keys.c \
         ../../main/llm_auth.c \
+        ../../main/wifi_credentials.c \
         ../../main/telegram_update.c \
         ../../main/telegram_token.c \
         ../../main/agent.c \
@@ -86,6 +88,28 @@ run_host_tests() {
     }
 
     ./build/test_runner
+
+    # Compile and run real llm.c runtime tests in stub mode to keep host
+    # coverage on production LLM backend initialization and request paths.
+    gcc -o build/test_llm_runtime_runner $SANITIZE_FLAGS \
+        -std=c99 \
+        $WARNING_FLAGS \
+        -I../../main \
+        -I. \
+        -DTEST_BUILD \
+        -DCONFIG_ZCLAW_STUB_LLM=1 \
+        -DCONFIG_ZCLAW_EMULATOR_LIVE_LLM=0 \
+        test_llm_runtime.c \
+        test_llm_runtime_runner.c \
+        mock_memory.c \
+        mock_esp.c \
+        ../../main/llm.c \
+        ../../main/llm_auth.c || {
+        echo "Note: Failed to compile llm runtime tests."
+        return 1
+    }
+
+    ./build/test_llm_runtime_runner
 
     echo "=== Running host bridge Python tests ==="
     python3 -m unittest -q \

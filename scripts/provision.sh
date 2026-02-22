@@ -16,6 +16,9 @@ TG_CHAT_ID=""
 ASSUME_YES=false
 VERIFY_API_KEY=true
 PRINT_DETECTED_SSID=false
+WIFI_SSID_MAX_LEN=32
+WIFI_PASS_MAX_LEN=63
+WIFI_PASS_MIN_LEN=8
 
 usage() {
     cat << EOF
@@ -207,6 +210,44 @@ detect_host_wifi_ssid() {
     return 1
 }
 
+validate_wifi_ssid_length() {
+    local ssid_len
+    ssid_len="$(LC_ALL=C printf '%s' "$WIFI_SSID" | wc -c | tr -d '[:space:]')"
+
+    if [ "$ssid_len" -eq 0 ]; then
+        echo "Error: WiFi SSID is required"
+        return 1
+    fi
+
+    if [ "$ssid_len" -gt "$WIFI_SSID_MAX_LEN" ]; then
+        echo "Error: WiFi SSID must be at most ${WIFI_SSID_MAX_LEN} bytes (got ${ssid_len})."
+        return 1
+    fi
+
+    return 0
+}
+
+validate_wifi_password_length() {
+    local pass_len
+    pass_len="$(LC_ALL=C printf '%s' "$WIFI_PASS" | wc -c | tr -d '[:space:]')"
+
+    if [ "$pass_len" -eq 0 ]; then
+        return 0
+    fi
+
+    if [ "$pass_len" -gt "$WIFI_PASS_MAX_LEN" ]; then
+        echo "  Error: password exceeds ${WIFI_PASS_MAX_LEN} bytes."
+        return 1
+    fi
+
+    if [ "$pass_len" -lt "$WIFI_PASS_MIN_LEN" ]; then
+        echo "  Error: password must be ${WIFI_PASS_MIN_LEN}-${WIFI_PASS_MAX_LEN} bytes, or empty for open network."
+        return 1
+    fi
+
+    return 0
+}
+
 check_wifi_credentials() {
     local current_ssid
     local warnings=0
@@ -219,9 +260,8 @@ check_wifi_credentials() {
     if [ -n "$WIFI_PASS" ]; then
         echo "  Password: $WIFI_PASS"
 
-        if [ "${#WIFI_PASS}" -lt 8 ]; then
-            echo "  Warning: password is shorter than 8 characters (WPA/WPA2 usually requires >= 8)."
-            warnings=1
+        if ! validate_wifi_password_length; then
+            return 1
         fi
 
         if [[ "$WIFI_PASS" =~ ^[[:space:]] || "$WIFI_PASS" =~ [[:space:]]$ ]]; then
@@ -683,6 +723,8 @@ if [ -z "$WIFI_SSID" ]; then
     echo "Error: WiFi SSID is required"
     exit 1
 fi
+
+validate_wifi_ssid_length || exit 1
 
 if [ -z "$BACKEND" ]; then
     if [ "$ASSUME_YES" = true ]; then

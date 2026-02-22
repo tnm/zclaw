@@ -15,9 +15,13 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from web_relay import (  # noqa: E402
     MockAgentBridge,
     SerialAgentBridge,
+    canonical_origin,
     create_agent_bridge,
     describe_serial_exception,
+    is_cors_origin_allowed,
+    is_json_content_type,
     is_loopback_host,
+    is_post_origin_allowed,
     is_probable_serial_exception,
     is_probable_esp_log_line,
     is_request_authorized,
@@ -45,12 +49,64 @@ class WebRelayTests(unittest.TestCase):
         self.assertIsNone(normalize_origin("   "))
         self.assertEqual(normalize_origin("  http://localhost:5173 "), "http://localhost:5173")
 
+    def test_canonical_origin(self) -> None:
+        self.assertEqual(canonical_origin(" HTTP://LOCALHOST:8787 "), "http://localhost:8787")
+        self.assertEqual(canonical_origin("https://Example.com"), "https://example.com")
+        self.assertIsNone(canonical_origin("localhost:8787"))
+        self.assertIsNone(canonical_origin("   "))
+
     def test_is_loopback_host(self) -> None:
         self.assertTrue(is_loopback_host("127.0.0.1"))
         self.assertTrue(is_loopback_host("localhost"))
         self.assertTrue(is_loopback_host("::1"))
         self.assertFalse(is_loopback_host("0.0.0.0"))
         self.assertFalse(is_loopback_host("192.168.1.2"))
+
+    def test_is_json_content_type(self) -> None:
+        self.assertTrue(is_json_content_type("application/json"))
+        self.assertTrue(is_json_content_type("application/json; charset=utf-8"))
+        self.assertFalse(is_json_content_type(None))
+        self.assertFalse(is_json_content_type("text/plain"))
+        self.assertFalse(is_json_content_type("application/x-www-form-urlencoded"))
+
+    def test_post_origin_policy_without_cors(self) -> None:
+        self.assertTrue(is_post_origin_allowed(None, "127.0.0.1:8787", None))
+        self.assertTrue(
+            is_post_origin_allowed(
+                "http://127.0.0.1:8787",
+                "127.0.0.1:8787",
+                None,
+            )
+        )
+        self.assertFalse(
+            is_post_origin_allowed(
+                "http://evil.example",
+                "127.0.0.1:8787",
+                None,
+            )
+        )
+
+    def test_post_origin_policy_with_cors(self) -> None:
+        self.assertTrue(
+            is_post_origin_allowed(
+                "HTTPS://APP.EXAMPLE/",
+                "127.0.0.1:8787",
+                "https://app.example",
+            )
+        )
+        self.assertFalse(
+            is_post_origin_allowed(
+                "https://other.example",
+                "127.0.0.1:8787",
+                "https://app.example",
+            )
+        )
+
+    def test_is_cors_origin_allowed(self) -> None:
+        self.assertTrue(is_cors_origin_allowed("HTTPS://APP.EXAMPLE/", "https://app.example"))
+        self.assertFalse(is_cors_origin_allowed(None, "https://app.example"))
+        self.assertFalse(is_cors_origin_allowed("not-a-url", "https://app.example"))
+        self.assertFalse(is_cors_origin_allowed("https://other.example", "https://app.example"))
 
     def test_validate_bind_security(self) -> None:
         validate_bind_security("127.0.0.1", None)

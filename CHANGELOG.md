@@ -9,6 +9,16 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Changed
 - _None yet._
 
+## [2.5.3] - 2026-02-22
+
+### Added
+- Host coverage for byte-accurate WiFi credential validation paths and `llm.c` runtime initialization/request behavior in stub mode.
+
+### Changed
+- Provisioning now validates WiFi SSID/password by byte length (`32`/`63`) to match on-device limits and behavior.
+- WiFi credential copy/validation logic is centralized in shared firmware helpers used by startup connection flow.
+- Web relay `/api/chat` now requires JSON `Content-Type` and uses canonical origin matching across request and CORS handling.
+
 ## [2.5.2] - 2026-02-22
 
 ### Changed

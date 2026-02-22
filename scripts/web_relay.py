@@ -67,6 +67,64 @@ def normalize_origin(value: str | None) -> str | None:
     return stripped if stripped else None
 
 
+def canonical_origin(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    parsed = urlparse(stripped)
+    if parsed.scheme not in {"http", "https"}:
+        return None
+    if not parsed.netloc:
+        return None
+    return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+
+
+def is_post_origin_allowed(origin: str | None, host: str | None, cors_origin: str | None) -> bool:
+    if origin is None:
+        # Non-browser clients (curl/CLI) often omit Origin.
+        return True
+
+    canonical_request_origin = canonical_origin(origin)
+    if canonical_request_origin is None:
+        return False
+
+    if cors_origin is not None:
+        canonical_allowed_origin = canonical_origin(cors_origin)
+        if canonical_allowed_origin is None:
+            return False
+        return canonical_request_origin == canonical_allowed_origin
+
+    if host is None:
+        return False
+
+    canonical_host_origin = canonical_origin(f"http://{host.strip()}")
+    if canonical_host_origin is None:
+        return False
+
+    return canonical_request_origin == canonical_host_origin
+
+
+def is_json_content_type(content_type: str | None) -> bool:
+    if content_type is None:
+        return False
+    mime_type = content_type.split(";", 1)[0].strip().lower()
+    return mime_type == "application/json"
+
+
+def is_cors_origin_allowed(origin: str | None, cors_origin: str | None) -> bool:
+    if cors_origin is None or origin is None:
+        return False
+
+    canonical_request_origin = canonical_origin(origin)
+    canonical_allowed_origin = canonical_origin(cors_origin)
+    if canonical_request_origin is None or canonical_allowed_origin is None:
+        return False
+
+    return canonical_request_origin == canonical_allowed_origin
+
+
 def is_loopback_host(host: str | None) -> bool:
     if host is None:
         return False
@@ -401,6 +459,21 @@ def make_handler(state: AppState):
                 self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
                 return
 
+            if not is_post_origin_allowed(
+                self.headers.get("Origin"),
+                self.headers.get("Host"),
+                state.cors_origin,
+            ):
+                self._send_json(HTTPStatus.FORBIDDEN, {"error": "Origin not allowed"})
+                return
+
+            if not is_json_content_type(self.headers.get("Content-Type")):
+                self._send_json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "Content-Type must be application/json"},
+                )
+                return
+
             provided_key = normalize_api_key(self.headers.get("X-Zclaw-Key"))
             if not is_request_authorized(provided_key, state.api_key):
                 self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
@@ -486,18 +559,13 @@ def make_handler(state: AppState):
 
         def _set_cors_headers(self) -> None:
             origin = self.headers.get("Origin")
-            if state.cors_origin is None or origin is None:
-                return
-            if origin != state.cors_origin:
+            if not is_cors_origin_allowed(origin, state.cors_origin):
                 return
             self.send_header("Access-Control-Allow-Origin", origin)
             self.send_header("Vary", "Origin")
 
         def _is_allowed_cors_origin(self) -> bool:
-            if state.cors_origin is None:
-                return False
-            origin = self.headers.get("Origin")
-            return origin == state.cors_origin
+            return is_cors_origin_allowed(self.headers.get("Origin"), state.cors_origin)
 
         def _send_json(self, status: HTTPStatus, payload: dict) -> None:
             encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")

@@ -198,6 +198,50 @@ LAST_PORT=
                 check=False,
             )
 
+    def _run_provision_length_validation(
+        self,
+        *,
+        ssid: str,
+        wifi_pass: str,
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+
+            return subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--yes",
+                    "--skip-api-check",
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    ssid,
+                    "--pass",
+                    wifi_pass,
+                    "--backend",
+                    "openai",
+                    "--api-key",
+                    "sk-test",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
     def test_provision_openai_api_check_runs_in_yes_mode(self) -> None:
         proc = self._run_provision_api_check_fail("openai")
         output = f"{proc.stdout}\n{proc.stderr}"
@@ -211,6 +255,51 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Verifying OpenRouter API key", output)
         self.assertIn("Error: API check failed in --yes mode.", output)
+
+    def test_provision_rejects_ssid_longer_than_32_chars(self) -> None:
+        proc = self._run_provision_length_validation(
+            ssid="S" * 33,
+            wifi_pass="password123",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("SSID must be at most 32 bytes", output)
+
+    def test_provision_rejects_password_longer_than_63_chars(self) -> None:
+        proc = self._run_provision_length_validation(
+            ssid="HomeNetwork",
+            wifi_pass="p" * 64,
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("password exceeds 63 bytes", output)
+
+    def test_provision_rejects_short_nonempty_password(self) -> None:
+        proc = self._run_provision_length_validation(
+            ssid="HomeNetwork",
+            wifi_pass="short7!",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("password must be 8-63 bytes", output)
+
+    def test_provision_rejects_multibyte_ssid_above_32_bytes(self) -> None:
+        proc = self._run_provision_length_validation(
+            ssid="\u00e9" * 17,
+            wifi_pass="password123",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("SSID must be at most 32 bytes", output)
+
+    def test_provision_rejects_multibyte_password_above_63_bytes(self) -> None:
+        proc = self._run_provision_length_validation(
+            ssid="HomeNetwork",
+            wifi_pass="\u00e9" * 32,
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("password exceeds 63 bytes", output)
 
     def test_erase_requires_explicit_mode(self) -> None:
         proc = subprocess.run(

@@ -27,6 +27,7 @@ idf_component_register(
         "ota.c"
         "boot_guard.c"
         "user_tools.c"
+        "wifi_credentials.c"
     INCLUDE_DIRS "."
     REQUIRES
         nvs_flash

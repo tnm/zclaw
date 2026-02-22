@@ -11,6 +11,7 @@
 #include "boot_guard.h"
 #include "nvs_keys.h"
 #include "messages.h"
+#include "wifi_credentials.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -310,6 +311,7 @@ static bool wifi_connect_sta(void)
 {
     char ssid[64] = {0};
     char pass[64] = {0};
+    char wifi_error[96] = {0};
 
     if (!memory_get(NVS_KEY_WIFI_SSID, ssid, sizeof(ssid)) || ssid[0] == '\0') {
 #if defined(CONFIG_ZCLAW_WIFI_SSID)
@@ -330,6 +332,11 @@ static bool wifi_connect_sta(void)
 #else
         pass[0] = '\0';
 #endif
+    }
+
+    if (!wifi_credentials_validate(ssid, pass, wifi_error, sizeof(wifi_error))) {
+        ESP_LOGE(TAG, "Invalid WiFi credentials: %s", wifi_error);
+        return false;
     }
 
     ESP_LOGI(TAG, "Loaded WiFi credentials: ssid='%s', password_len=%u",
@@ -356,8 +363,7 @@ static bool wifi_connect_sta(void)
                                                          &wifi_event_handler, NULL, &instance_got_ip));
 
     wifi_config_t wifi_config = {0};
-    strncpy((char *)wifi_config.sta.ssid, ssid, sizeof(wifi_config.sta.ssid) - 1);
-    strncpy((char *)wifi_config.sta.password, pass, sizeof(wifi_config.sta.password) - 1);
+    wifi_credentials_copy_to_sta_config(wifi_config.sta.ssid, wifi_config.sta.password, ssid, pass);
     // Allow WPA/WPA2/WPA3 PSK networks; open networks stay open-only.
     wifi_config.sta.threshold.authmode = pass[0] ? WIFI_AUTH_WPA_PSK : WIFI_AUTH_OPEN;
 

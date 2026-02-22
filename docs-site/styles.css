@@ -104,6 +104,7 @@ body {
   display: grid;
   grid-template-columns: 292px 1fr;
   animation: enter 520ms ease both;
+  animation-iteration-count: 1;
 }
 
 :root[data-theme="kr"] .page {
@@ -169,6 +170,7 @@ body {
   opacity: 0;
   transform: translateX(-6px);
   animation: chapterIn 380ms ease forwards;
+  animation-iteration-count: 1;
 }
 
 .chapter-list li:nth-child(1) { animation-delay: 90ms; }
@@ -635,6 +637,15 @@ kbd {
   border-radius: 4px;
   border: 1px solid var(--line);
   background: var(--code-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 @media (max-width: 980px) {

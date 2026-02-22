@@ -75,6 +75,8 @@ typedef enum {
     "You have 400KB of RAM and run on bare metal with FreeRTOS. " \
     "You can control GPIO pins, store persistent memories, and set schedules. " \
     "Be concise - you're on a tiny chip. " \
+    "Return plain text only. Do not use markdown, code fences, bullet lists, backticks, " \
+    "bold, italics, or headings. " \
     "Use your tools to control hardware, remember things, and automate tasks. " \
     "Users can create custom tools with create_tool. When you call a custom tool, " \
     "you'll receive an action to execute - carry it out using your built-in tools."
@@ -137,7 +139,7 @@ typedef enum {
 // -----------------------------------------------------------------------------
 // Cron / Scheduler
 // -----------------------------------------------------------------------------
-#define CRON_CHECK_INTERVAL_MS  60000   // Check schedules every minute
+#define CRON_CHECK_INTERVAL_MS  10000   // Check schedules every 10 seconds
 #define CRON_MAX_ENTRIES        16      // Max scheduled tasks
 #define CRON_MAX_ACTION_LEN     256     // Max action string length
 

@@ -14,16 +14,6 @@ zclaw is written in C and runs on ESP32 boards with a strict all-in firmware bud
 The **888 KiB** cap is all-in firmware size, not just app code.
 It includes `zclaw` logic plus ESP-IDF/FreeRTOS runtime, Wi-Fi/networking, TLS/crypto, and cert bundle overhead.
 
-Current default `esp32s3` breakdown (`idf.py -B build size-components`, flash totals):
-
-- zclaw app logic (`libmain.a`): `26430` bytes (~25.8 KiB, ~3.1%)
-- Wi-Fi + networking stack: `375278` bytes (~366.5 KiB, ~43.7%)
-- TLS/crypto stack: `125701` bytes (~122.8 KiB, ~14.7%)
-- cert bundle + app metadata: `92654` bytes (~90.5 KiB, ~10.8%)
-- other ESP-IDF/runtime/drivers/libc: `237889` bytes (~232.3 KiB, ~27.7%)
-
-`zclaw.bin` from the same build is `865888` bytes (~845.6 KiB), which stays under the `888 KiB` cap.
-
 Fun to use, fun to hack on.
 <br clear="right" />
 

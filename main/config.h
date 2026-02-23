@@ -161,8 +161,17 @@ typedef enum {
 // -----------------------------------------------------------------------------
 // Factory Reset
 // -----------------------------------------------------------------------------
+#ifdef CONFIG_ZCLAW_FACTORY_RESET_PIN
+#define FACTORY_RESET_PIN       CONFIG_ZCLAW_FACTORY_RESET_PIN
+#else
 #define FACTORY_RESET_PIN       9       // Hold low for 5 seconds to reset
+#endif
+
+#ifdef CONFIG_ZCLAW_FACTORY_RESET_HOLD_MS
+#define FACTORY_RESET_HOLD_MS   CONFIG_ZCLAW_FACTORY_RESET_HOLD_MS
+#else
 #define FACTORY_RESET_HOLD_MS   5000
+#endif
 
 // -----------------------------------------------------------------------------
 // NTP (time sync)

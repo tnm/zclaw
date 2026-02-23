@@ -1,0 +1,13 @@
+# ESP32-S3-BOX-3 board preset
+
+# Target
+CONFIG_IDF_TARGET="esp32s3"
+
+# GPIO tool safety
+# Restrict tool access to PMOD-routed GPIOs to avoid onboard display/audio/touch buses.
+CONFIG_ZCLAW_GPIO_ALLOWED_PINS="9,10,11,12,13,14,21,38,39,40,41,42,43,44"
+
+# Factory reset
+# ESP32-S3-BOX-3 config button is on GPIO0.
+CONFIG_ZCLAW_FACTORY_RESET_PIN=0
+CONFIG_ZCLAW_FACTORY_RESET_HOLD_MS=5000

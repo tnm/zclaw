@@ -7,6 +7,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 PORT=""
 KILL_MONITOR=false
+BOARD_PRESET=""
+BOARD_SDKCONFIG_FILE=""
+IDF_TARGET_OVERRIDE=""
+SDKCONFIG_DEFAULTS_OVERRIDE=""
 
 cd "$PROJECT_DIR"
 
@@ -15,8 +19,53 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 usage() {
-    echo "Usage: $0 [PORT] [--kill-monitor]"
+    echo "Usage: $0 [PORT] [--kill-monitor] [--board <preset>] [--box-3]"
     echo "  --kill-monitor  Stop stale ESP-IDF monitor processes holding the selected port"
+    echo "  --board         Apply a board preset (currently: esp32s3-box-3)"
+    echo "  --box-3         Alias for --board esp32s3-box-3"
+}
+
+normalize_board_preset() {
+    case "$1" in
+        esp32s3-box-3|esp32-s3-box-3|box-3|esp-box-3)
+            echo "esp32s3-box-3"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+resolve_board_preset() {
+    local normalized
+
+    [ -n "$BOARD_PRESET" ] || return 0
+
+    normalized="$(normalize_board_preset "$BOARD_PRESET")"
+    if [ -z "$normalized" ]; then
+        echo "Error: Unknown board preset '$BOARD_PRESET'"
+        echo "Supported presets: esp32s3-box-3"
+        return 1
+    fi
+
+    BOARD_PRESET="$normalized"
+    case "$BOARD_PRESET" in
+        esp32s3-box-3)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-box-3.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        *)
+            echo "Error: Unsupported board preset '$BOARD_PRESET'"
+            return 1
+            ;;
+    esac
+
+    if [ ! -f "$PROJECT_DIR/$BOARD_SDKCONFIG_FILE" ]; then
+        echo "Error: Board preset file missing: $BOARD_SDKCONFIG_FILE"
+        return 1
+    fi
+
+    SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults;$BOARD_SDKCONFIG_FILE"
 }
 
 detect_serial_ports() {
@@ -282,6 +331,16 @@ ensure_target_matches_connected_board() {
         return 0
     fi
 
+    if [ -n "$IDF_TARGET_OVERRIDE" ]; then
+        if [ "$IDF_TARGET_OVERRIDE" = "$detected_target" ]; then
+            return 0
+        fi
+
+        echo "Error: board preset '$BOARD_PRESET' requires target '$IDF_TARGET_OVERRIDE',"
+        echo "but connected board is '$chip_name' ($detected_target)."
+        return 1
+    fi
+
     current_target="$(project_target)"
     if [ -z "$current_target" ] || [ "$current_target" = "$detected_target" ]; then
         return 0
@@ -363,31 +422,45 @@ source_idf_env() {
 source_idf_env || exit 1
 
 # Parse arguments
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --kill-monitor)
             KILL_MONITOR=true
+            ;;
+        --board)
+            shift
+            [ $# -gt 0 ] || { echo "Error: --board requires a value"; usage; exit 1; }
+            BOARD_PRESET="$1"
+            ;;
+        --board=*)
+            BOARD_PRESET="${1#*=}"
+            ;;
+        --box-3)
+            BOARD_PRESET="esp32s3-box-3"
             ;;
         --help|-h)
             usage
             exit 0
             ;;
         -*)
-            echo "Error: unknown option '$arg'"
+            echo "Error: unknown option '$1'"
             usage
             exit 1
             ;;
         *)
             if [ -z "$PORT" ]; then
-                PORT="$arg"
+                PORT="$1"
             else
-                echo "Error: multiple ports provided: '$PORT' and '$arg'"
+                echo "Error: multiple ports provided: '$PORT' and '$1'"
                 usage
                 exit 1
             fi
             ;;
     esac
+    shift
 done
+
+resolve_board_preset || exit 1
 
 # Auto-detect port if needed
 if [ -z "$PORT" ]; then
@@ -438,16 +511,31 @@ if flash_encryption_enabled "$EFUSE_SUMMARY"; then
     echo -e "${YELLOW}This device has flash encryption enabled!${NC}"
     echo "You must use the secure flash script instead:"
     echo ""
-    echo "  ./scripts/flash-secure.sh $PORT"
+    if [ -n "$BOARD_PRESET" ]; then
+        echo "  ./scripts/flash-secure.sh --board $BOARD_PRESET $PORT"
+    else
+        echo "  ./scripts/flash-secure.sh $PORT"
+    fi
     echo ""
     exit 1
 fi
 
 echo "Flashing to $PORT..."
+if [ -n "$BOARD_PRESET" ]; then
+    echo "Board preset: $BOARD_PRESET"
+fi
 FLASH_LOG="$(mktemp -t zclaw-flash.XXXXXX.log 2>/dev/null || mktemp)"
 set +e
 set -o pipefail
-idf.py -p "$PORT" flash 2>&1 | tee "$FLASH_LOG"
+idf_flash_cmd=(idf.py)
+if [ -n "$IDF_TARGET_OVERRIDE" ]; then
+    idf_flash_cmd+=(-D "IDF_TARGET=$IDF_TARGET_OVERRIDE")
+fi
+if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
+    idf_flash_cmd+=(-D "SDKCONFIG_DEFAULTS=$SDKCONFIG_DEFAULTS_OVERRIDE")
+fi
+idf_flash_cmd+=(-p "$PORT" flash)
+"${idf_flash_cmd[@]}" 2>&1 | tee "$FLASH_LOG"
 FLASH_RC=${PIPESTATUS[0]}
 set +o pipefail
 set -e

@@ -13,6 +13,10 @@ BUILD_DIR="$PROJECT_DIR/build-secure"
 PRODUCTION_MODE=false
 PORT=""
 KILL_MONITOR=false
+BOARD_PRESET=""
+BOARD_SDKCONFIG_FILE=""
+IDF_TARGET_OVERRIDE=""
+SDKCONFIG_DEFAULTS_OVERRIDE=""
 
 # Colors
 RED='\033[0;31m'
@@ -27,6 +31,70 @@ NC='\033[0m'
 print_status() { echo -e "${GREEN}✓${NC} $1"; }
 print_warning() { echo -e "${YELLOW}!${NC} $1"; }
 print_error() { echo -e "${RED}✗${NC} $1"; }
+
+normalize_board_preset() {
+    case "$1" in
+        esp32s3-box-3|esp32-s3-box-3|box-3|esp-box-3)
+            echo "esp32s3-box-3"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+resolve_board_preset() {
+    local normalized
+
+    [ -n "$BOARD_PRESET" ] || return 0
+
+    normalized="$(normalize_board_preset "$BOARD_PRESET")"
+    if [ -z "$normalized" ]; then
+        print_error "Unknown board preset '$BOARD_PRESET'"
+        echo "Supported presets: esp32s3-box-3"
+        return 1
+    fi
+
+    BOARD_PRESET="$normalized"
+    case "$BOARD_PRESET" in
+        esp32s3-box-3)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-box-3.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        *)
+            print_error "Unsupported board preset '$BOARD_PRESET'"
+            return 1
+            ;;
+    esac
+
+    if [ ! -f "$PROJECT_DIR/$BOARD_SDKCONFIG_FILE" ]; then
+        print_error "Board preset file missing: $BOARD_SDKCONFIG_FILE"
+        return 1
+    fi
+
+    SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults;$BOARD_SDKCONFIG_FILE;sdkconfig.secure"
+}
+
+secure_sdkconfig_defaults() {
+    if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
+        echo "$SDKCONFIG_DEFAULTS_OVERRIDE"
+    else
+        echo "sdkconfig.defaults;sdkconfig.secure"
+    fi
+}
+
+run_secure_build() {
+    local defaults
+    local -a build_cmd
+    defaults="$(secure_sdkconfig_defaults)"
+
+    build_cmd=(idf.py -B "$BUILD_DIR")
+    if [ -n "$IDF_TARGET_OVERRIDE" ]; then
+        build_cmd+=(-D "IDF_TARGET=$IDF_TARGET_OVERRIDE")
+    fi
+    build_cmd+=(-D "SDKCONFIG_DEFAULTS=$defaults" build)
+    "${build_cmd[@]}"
+}
 
 detect_serial_ports() {
     local ports=()
@@ -276,6 +344,16 @@ ensure_target_matches_connected_board() {
         return 0
     fi
 
+    if [ -n "$IDF_TARGET_OVERRIDE" ]; then
+        if [ "$IDF_TARGET_OVERRIDE" = "$detected_target" ]; then
+            return 0
+        fi
+
+        print_error "Board preset '$BOARD_PRESET' requires target '$IDF_TARGET_OVERRIDE',"
+        echo "but connected board is '$chip_name' ($detected_target)."
+        return 1
+    fi
+
     current_target="$(project_target)"
     if [ -z "$current_target" ] || [ "$current_target" = "$detected_target" ]; then
         return 0
@@ -326,9 +404,11 @@ flash_encryption_enabled() {
 }
 
 usage() {
-    echo "Usage: $0 [PORT] [--production] [--kill-monitor]"
+    echo "Usage: $0 [PORT] [--production] [--kill-monitor] [--board <preset>] [--box-3]"
     echo "  --production  Burn key with hardware read protection (recommended for deployed devices)"
     echo "  --kill-monitor  Stop stale ESP-IDF monitor processes holding the selected port"
+    echo "  --board         Apply a board preset (currently: esp32s3-box-3)"
+    echo "  --box-3         Alias for --board esp32s3-box-3"
 }
 
 source_idf_env() {
@@ -363,36 +443,49 @@ source_idf_env() {
 cd "$PROJECT_DIR"
 
 # Parse arguments
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --production)
             PRODUCTION_MODE=true
             ;;
         --kill-monitor)
             KILL_MONITOR=true
             ;;
+        --board)
+            shift
+            [ $# -gt 0 ] || { print_error "--board requires a value"; usage; exit 1; }
+            BOARD_PRESET="$1"
+            ;;
+        --board=*)
+            BOARD_PRESET="${1#*=}"
+            ;;
+        --box-3)
+            BOARD_PRESET="esp32s3-box-3"
+            ;;
         --help|-h)
             usage
             exit 0
             ;;
         -*)
-            print_error "Unknown option: $arg"
+            print_error "Unknown option: $1"
             usage
             exit 1
             ;;
         *)
             if [ -z "$PORT" ]; then
-                PORT="$arg"
+                PORT="$1"
             else
-                print_error "Multiple ports provided: '$PORT' and '$arg'"
+                print_error "Multiple ports provided: '$PORT' and '$1'"
                 usage
                 exit 1
             fi
             ;;
     esac
+    shift
 done
 
 source_idf_env || exit 1
+resolve_board_preset || exit 1
 
 # Auto-detect port if not provided
 if [ -z "$PORT" ]; then
@@ -449,6 +542,9 @@ if [ "$PRODUCTION_MODE" = true ]; then
 else
     print_warning "Development mode: encryption key remains readable for USB reflash workflows"
 fi
+if [ -n "$BOARD_PRESET" ]; then
+    print_status "Board preset: $BOARD_PRESET"
+fi
 
 # Get chip info
 echo "Reading device info from $PORT..."
@@ -491,9 +587,7 @@ if [ "$ENCRYPTION_ENABLED" = true ]; then
         echo "Building and flashing with encryption..."
 
         # Build with secure config
-        idf.py -B "$BUILD_DIR" \
-            -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.secure" \
-            build
+        run_secure_build
 
         # Flash using the encrypted-flash target with saved key
         idf.py -B "$BUILD_DIR" -p "$PORT" encrypted-flash
@@ -541,9 +635,7 @@ else
 
     echo ""
     echo "Step 2/4: Building with secure configuration..."
-    idf.py -B "$BUILD_DIR" \
-        -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.secure" \
-        build
+    run_secure_build
     print_status "Build complete"
 
     echo ""

@@ -8,6 +8,27 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - No unreleased changes yet.
 
+## [2.7.0] - 2026-02-23
+
+### Added
+- Added first-class Ollama backend support with OpenAI-compatible request/response handling and runtime endpoint override via `llm_api_url`.
+- Provisioning now supports custom API endpoint input via `--api-url` (`provision.sh` and `provision-dev.sh`) and persists endpoint overrides into NVS.
+- Added host coverage for Ollama backend init/defaults, custom API URL override behavior, and provisioning flows around `--backend ollama`/`--api-url`.
+
+### Changed
+- Ollama is now included in backend choices across runtime provisioning/docs, with default model set to `qwen3:8b`.
+- API key is optional for Ollama (while remaining required for Anthropic/OpenAI/OpenRouter).
+- Provisioning API checks for OpenAI/OpenRouter now normalize chat-completions override URLs to `/models`, so valid runtime chat endpoints no longer cause false verification failures.
+
+### Fixed
+- Cleared LLM API key runtime state on `llm_init()` re-init before NVS load to prevent stale in-memory keys from carrying across backend/key changes.
+
+### Docs
+- Updated README + docs-site guidance for Ollama provisioning, including LAN-reachable endpoint requirement (`--api-url`) and backend support lists.
+
+### Tests
+- Added host tests ensuring OpenAI/OpenRouter API-check URL normalization and LLM re-init key-state clearing.
+
 ## [2.6.1] - 2026-02-23
 
 ### Changed

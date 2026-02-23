@@ -89,4 +89,22 @@ menu "zclaw Configuration"
                 When set (non-empty), this list is used instead of min/max range.
     endmenu
 
+    menu "Factory Reset"
+        config ZCLAW_FACTORY_RESET_PIN
+            int "Factory reset button GPIO"
+            range 0 48
+            default 9
+            help
+                Hold this pin low during startup for the configured hold time
+                to erase NVS settings and restart.
+                Set this to your board's wired reset/config button GPIO.
+
+        config ZCLAW_FACTORY_RESET_HOLD_MS
+            int "Factory reset hold time (ms)"
+            range 1000 60000
+            default 5000
+            help
+                Duration the reset pin must stay low to trigger factory reset.
+    endmenu
+
 endmenu

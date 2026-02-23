@@ -95,9 +95,29 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
           <ol>
             <li>Flash firmware (<code>./scripts/flash.sh</code> or <code>./scripts/flash-secure.sh</code>). Flash scripts auto-detect chip target and can prompt for <code>idf.py set-target &lt;chip&gt;</code> on mismatch.</li>
             <li>Provision credentials (<code>./scripts/provision.sh --port &lt;serial-port&gt;</code>).</li>
-            <li>Enter WiFi SSID, LLM provider, and API key. Optional Telegram fields can be filled now or later.</li>
+            <li>Enter WiFi SSID, LLM provider, and model. Use API key for Anthropic/OpenAI/OpenRouter, or API URL for Ollama. Optional Telegram fields can be filled now or later.</li>
             <li>Reboot and inspect logs with <code>./scripts/monitor.sh</code>.</li>
           </ol>
+        </section>
+
+        <section class="section">
+          <h2>LLM Provisioning Options</h2>
+          <p>Backend/model/API settings are runtime credentials in NVS, so you can change them any time without reflashing firmware. The install flow prompts for the same values when you run <code>./install.sh</code> with provisioning enabled.</p>
+          <ul>
+            <li><strong>anthropic</strong>, <strong>openai</strong>, <strong>openrouter</strong>: require <code>--api-key</code>.</li>
+            <li><strong>ollama</strong>: requires <code>--api-url</code>; API key is optional.</li>
+            <li>Use <code>--model</code> to override defaults on any backend.</li>
+          </ul>
+          <pre># OpenAI
+./scripts/provision.sh --port /dev/cu.usbmodem1101 --backend openai --model gpt-5.2 --api-key sk-...
+
+# OpenRouter
+./scripts/provision.sh --port /dev/cu.usbmodem1101 --backend openrouter --model minimax/minimax-m2.5 --api-key or-...
+
+# Ollama (LAN host)
+./scripts/provision.sh --port /dev/cu.usbmodem1101 --backend ollama --model qwen3:8b --api-url http://192.168.1.50:11434</pre>
+          <p class="inline-note">For Ollama, use a LAN-reachable host/IP; <code>127.0.0.1</code> points to the ESP32 itself and will not reach your laptop/server.</p>
+          <p class="inline-note">To switch model/provider later, re-run provisioning with new <code>--backend</code>/<code>--model</code> values, or update <code>ZCLAW_BACKEND</code>/<code>ZCLAW_MODEL</code> in <code>provision-dev.sh</code> profile and re-run.</p>
         </section>
 
         <section class="section">
@@ -195,6 +215,17 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
           <pre>source ~/esp/esp-idf/export.sh
 idf.py menuconfig</pre>
           <p>Adjust GPIO safety range/allowlist under <code>zclaw Configuration -&gt; GPIO Tool Safety</code>.</p>
+        </section>
+
+        <section class="section">
+          <h2>Other Board Notes</h2>
+          <p>Most boards work with the generic target flow, but some need explicit board-safe pin/reset defaults.</p>
+          <pre># ESP32-S3-BOX-3 preset
+./scripts/build.sh --box-3
+./scripts/flash.sh --box-3 /dev/cu.usbmodem1101
+# or encrypted flash:
+./scripts/flash-secure.sh --box-3 /dev/cu.usbmodem1101</pre>
+          <p class="inline-note"><code>--box-3</code> applies <code>esp32s3</code> target, board-safe GPIO allowlist, and factory-reset pin defaults.</p>
         </section>
 
         <section class="section">

@@ -18,6 +18,8 @@ PROVISION_SH = PROJECT_ROOT / "scripts" / "provision.sh"
 PROVISION_DEV_SH = PROJECT_ROOT / "scripts" / "provision-dev.sh"
 TELEGRAM_CLEAR_SH = PROJECT_ROOT / "scripts" / "telegram-clear-backlog.sh"
 ERASE_SH = PROJECT_ROOT / "scripts" / "erase.sh"
+BUILD_SH = PROJECT_ROOT / "scripts" / "build.sh"
+FLASH_SH = PROJECT_ROOT / "scripts" / "flash.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -27,6 +29,24 @@ def _write_executable(path: Path, content: str) -> None:
 
 
 class InstallProvisionScriptTests(unittest.TestCase):
+    def _prepare_fake_idf_env(self, tmp: Path) -> tuple[dict[str, str], Path]:
+        home = tmp / "home"
+        export_dir = home / "esp" / "esp-idf"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        (export_dir / "export.sh").write_text(
+            "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+            encoding="utf-8",
+        )
+
+        bin_dir = tmp / "bin"
+        bin_dir.mkdir(parents=True, exist_ok=True)
+
+        env = os.environ.copy()
+        env["HOME"] = str(home)
+        env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+        env["TERM"] = "dumb"
+        return env, bin_dir
+
     def _run_install_with_prefs(self, prefs_text: str, extra_args: list[str]) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -99,6 +119,118 @@ LAST_PORT=
         self.assertEqual(proc.returncode, 0, msg=output)
         self.assertIn("Install QEMU for ESP32 emulation?: no", output)
         self.assertNotIn("Install QEMU for ESP32 emulation?: no (saved)", output)
+
+    def test_build_box3_passes_expected_idf_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            args_file = tmp / "idf-args.txt"
+            env["IDF_ARGS_FILE"] = str(args_file)
+
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+            )
+
+            proc = subprocess.run(
+                [str(BUILD_SH), "--box-3"],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("IDF_TARGET=esp32s3", args_text)
+            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults", args_text)
+            self.assertIn("build", args_text)
+
+    def test_flash_box3_passes_expected_idf_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+            args_file = tmp / "idf-args.txt"
+            env["IDF_ARGS_FILE"] = str(args_file)
+
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+            )
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "cat <<'EOF'\n"
+                "Chip is ESP32-S3 (QFN56)\n"
+                "MAC: AA:BB:CC:DD:EE:FF\n"
+                "EOF\n",
+            )
+            _write_executable(
+                bin_dir / "espefuse.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+            )
+
+            proc = subprocess.run(
+                [str(FLASH_SH), "--box-3", str(fake_port)],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("IDF_TARGET=esp32s3", args_text)
+            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults", args_text)
+            self.assertIn("-p", args_text)
+            self.assertIn(str(fake_port), args_text)
+            self.assertIn("flash", args_text)
+
+    def test_flash_box3_rejects_non_s3_chip(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'Chip is ESP32-C3 (QFN32)'\n",
+            )
+
+            proc = subprocess.run(
+                [str(FLASH_SH), "--box-3", str(fake_port)],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertNotEqual(proc.returncode, 0, msg=output)
+            self.assertIn("requires target 'esp32s3'", output)
+            self.assertIn("ESP32-C3", output)
 
     def _run_provision_detect(self, env_ssid: str, nmcli_output: str) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:

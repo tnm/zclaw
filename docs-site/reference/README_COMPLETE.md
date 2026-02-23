@@ -35,7 +35,7 @@ Agent: Done. GPIO2 is now off.
 - **Built-in and custom tools** - Ships with a pre-built set of tools, easy to extend
 - **GPIO control** — Read sensors, toggle relays, control LEDs
 - **Persistent memory** — Remembers things across reboots
-- **Any LLM backend** — Anthropic, OpenAI, or open source models via OpenRouter
+- **Any LLM backend** — Anthropic, OpenAI, OpenRouter, or Ollama (custom endpoint)
 - **$5 hardware** — Just an ESP32 dev board and WiFi
 - **~888 KiB guaranteed max binary** — Fits in dual OTA partitions with ~40% free
 
@@ -61,6 +61,17 @@ Good choice: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/Seeed-XIAO-ESP32C
 - RISC-V core, 160MHz, 400KB SRAM, 4MB flash
 
 Other options: ESP32-DevKitM, Adafruit QT Py, any generic ESP32 module.
+
+ESP32-S3-BOX-3 preset:
+
+```bash
+./scripts/build.sh --box-3
+./scripts/flash.sh --box-3 /dev/cu.usbmodem1101
+# or encrypted flash:
+./scripts/flash-secure.sh --box-3 /dev/cu.usbmodem1101
+```
+
+`--box-3` applies the `esp32s3` target plus board-specific GPIO safety and factory-reset defaults.
 
 ## Quick Start
 
@@ -307,6 +318,8 @@ Or use the convenience scripts:
 ./scripts/flash.sh          # Flash to device
 ./scripts/flash-secure.sh   # Flash with encryption (dev mode, key readable)
 ./scripts/flash-secure.sh --production  # Flash with key read-protected
+./scripts/build.sh --box-3  # Build with ESP32-S3-BOX-3 preset
+./scripts/flash.sh --box-3 /dev/cu.usbmodem1101  # Flash with ESP32-S3-BOX-3 preset
 ./scripts/provision.sh      # Provision WiFi/API credentials into NVS
 ./scripts/provision-dev.sh  # Local profile wrapper for repeat non-interactive provisioning
 ./scripts/telegram-clear-backlog.sh  # Clear queued Telegram updates for current token
@@ -331,13 +344,13 @@ Or use the convenience scripts:
 3. Enter required values:
    - WiFi SSID
    - LLM provider
-   - LLM API key
+   - LLM API key (Anthropic/OpenAI/OpenRouter) or API URL (Ollama)
 4. Optional: WiFi password, Telegram bot token, Telegram chat ID allowlist
 5. Reboot board and watch logs with `./scripts/monitor.sh`
 
 `provision.sh` auto-detects your host WiFi SSID when possible.
-For Anthropic, it also sends a quick `hello` API check after key entry.
-Use `--skip-api-check` to bypass verification.
+Provisioning runs a quick provider connectivity check by default (`--skip-api-check` to bypass).
+For Ollama, set `--api-url` to a LAN-reachable endpoint (for example `http://192.168.1.50:11434`), not `127.0.0.1`.
 
 For local iteration, `provision-dev.sh` loads values from `~/.config/zclaw/dev.env` so you do not need to re-enter WiFi/API/Telegram details every run.
 
@@ -379,6 +392,7 @@ Edit `main/config.h` to customize:
 #define LLM_DEFAULT_MODEL_ANTHROPIC "claude-sonnet-4-5"   // Anthropic default
 #define LLM_DEFAULT_MODEL_OPENAI    "gpt-5.2"             // OpenAI default
 #define LLM_DEFAULT_MODEL_OPENROUTER "minimax/minimax-m2.5" // OpenRouter default
+#define LLM_DEFAULT_MODEL_OLLAMA    "qwen3:8b"            // Ollama default
 #define LLM_MAX_TOKENS 1024                   // Max response tokens
 #define MAX_HISTORY_TURNS 8                   // Conversation history length
 #define RATELIMIT_MAX_PER_HOUR 100            // LLM requests per hour
@@ -434,7 +448,8 @@ zclaw/
 │   └── host/           # Host-based unit tests
 ├── install.sh          # One-line setup script
 ├── partitions.csv      # Flash partition layout (dual OTA)
-└── sdkconfig.defaults  # SDK defaults
+├── sdkconfig.defaults  # SDK defaults
+└── sdkconfig.esp32s3-box-3.defaults # ESP32-S3-BOX-3 preset defaults
 ```
 
 ### Running in QEMU
@@ -589,13 +604,15 @@ The script automatically detects if a device has encryption enabled and uses the
 
 If you don't enable encryption and lose the device, immediately revoke:
 - **API keys**: Regenerate in Anthropic/OpenAI/OpenRouter dashboard
+- **Ollama endpoints**: If self-hosted endpoint credentials or reverse-proxy auth are used, rotate those host/proxy secrets.
 - **Telegram bot**: Message @BotFather → `/revoke`
 - **Web relay secret**: Rotate `ZCLAW_WEB_API_KEY` on the host
 
 ## Factory Reset
 
 Default is GPIO9 (BOOT on XIAO ESP32-C3): hold for 5+ seconds during startup
-to erase all settings. On other boards, update `FACTORY_RESET_PIN` in `main/config.h`.
+to erase all settings. On other boards, adjust `zclaw Configuration -> Factory Reset`
+in `idf.py menuconfig` or use a board preset (for example `--box-3`).
 
 ## License
 

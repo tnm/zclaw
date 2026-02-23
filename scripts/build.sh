@@ -9,17 +9,76 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 PAD_TARGET_BYTES=""
+BOARD_PRESET=""
+BOARD_SDKCONFIG_FILE=""
+IDF_TARGET_OVERRIDE=""
+SDKCONFIG_DEFAULTS_OVERRIDE=""
 
 usage() {
-    echo "Usage: $0 [--pad-to-888kb]"
+    echo "Usage: $0 [--pad-to-888kb] [--board <preset>] [--box-3]"
     echo "  --pad-to-888kb  Create build/zclaw-888kb.bin padded to exactly 888 KiB (909312 bytes)"
+    echo "  --board         Apply a board preset (currently: esp32s3-box-3)"
+    echo "  --box-3         Alias for --board esp32s3-box-3"
+}
+
+normalize_board_preset() {
+    case "$1" in
+        esp32s3-box-3|esp32-s3-box-3|box-3|esp-box-3)
+            echo "esp32s3-box-3"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+resolve_board_preset() {
+    local normalized
+
+    [ -n "$BOARD_PRESET" ] || return 0
+
+    normalized="$(normalize_board_preset "$BOARD_PRESET")"
+    if [ -z "$normalized" ]; then
+        echo "Error: Unknown board preset '$BOARD_PRESET'"
+        echo "Supported presets: esp32s3-box-3"
+        return 1
+    fi
+
+    BOARD_PRESET="$normalized"
+    case "$BOARD_PRESET" in
+        esp32s3-box-3)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-box-3.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        *)
+            echo "Error: Unsupported board preset '$BOARD_PRESET'"
+            return 1
+            ;;
+    esac
+
+    if [ ! -f "$PROJECT_DIR/$BOARD_SDKCONFIG_FILE" ]; then
+        echo "Error: Board preset file missing: $BOARD_SDKCONFIG_FILE"
+        return 1
+    fi
+
+    SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults;$BOARD_SDKCONFIG_FILE"
 }
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --pad-to-888kb)
             PAD_TARGET_BYTES=$((888 * 1024))
+            ;;
+        --board)
             shift
+            [ $# -gt 0 ] || { echo "Error: --board requires a value"; usage; exit 1; }
+            BOARD_PRESET="$1"
+            ;;
+        --board=*)
+            BOARD_PRESET="${1#*=}"
+            ;;
+        --box-3)
+            BOARD_PRESET="esp32s3-box-3"
             ;;
         -h|--help)
             usage
@@ -31,7 +90,10 @@ while [ $# -gt 0 ]; do
             exit 1
             ;;
     esac
+    shift
 done
+
+resolve_board_preset || exit 1
 
 file_size_bytes() {
     local path="$1"
@@ -77,7 +139,19 @@ source_idf_env() {
 source_idf_env || exit 1
 
 echo "Building zclaw..."
-idf.py build
+if [ -n "$BOARD_PRESET" ]; then
+    echo "Board preset: $BOARD_PRESET"
+fi
+
+build_cmd=(idf.py)
+if [ -n "$IDF_TARGET_OVERRIDE" ]; then
+    build_cmd+=(-D "IDF_TARGET=$IDF_TARGET_OVERRIDE")
+fi
+if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
+    build_cmd+=(-D "SDKCONFIG_DEFAULTS=$SDKCONFIG_DEFAULTS_OVERRIDE")
+fi
+build_cmd+=(build)
+"${build_cmd[@]}"
 
 if [ -n "$PAD_TARGET_BYTES" ]; then
     SRC_BIN="$PROJECT_DIR/build/zclaw.bin"

@@ -3,6 +3,8 @@
 #include "messages.h"
 #include "memory.h"
 #include "nvs_keys.h"
+#include "llm.h"
+#include "telegram_poll_policy.h"
 #include "telegram_chat_ids.h"
 #include "telegram_token.h"
 #include "telegram_update.h"
@@ -512,6 +514,7 @@ static esp_err_t telegram_poll(void)
     int result_count = 0;
     int stale_count = 0;
     int accepted_count = 0;
+    int poll_timeout_s = telegram_poll_timeout_for_backend(llm_get_backend());
     net_diag_snapshot_t snapshot_before = {0};
     net_diag_snapshot_t snapshot_after = {0};
 
@@ -532,7 +535,7 @@ static esp_err_t telegram_poll(void)
     }
 
     snprintf(url, sizeof(url), "%s%s/getUpdates?timeout=%d&limit=1&offset=%s",
-             TELEGRAM_API_URL, s_bot_token, TELEGRAM_POLL_TIMEOUT, offset_buf);
+             TELEGRAM_API_URL, s_bot_token, poll_timeout_s, offset_buf);
 
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) {
@@ -546,7 +549,7 @@ static esp_err_t telegram_poll(void)
         .url = url,
         .event_handler = http_event_handler,
         .user_data = ctx,
-        .timeout_ms = (TELEGRAM_POLL_TIMEOUT + 10) * 1000,  // Add buffer to timeout
+        .timeout_ms = (poll_timeout_s + 10) * 1000,  // Add buffer to timeout
         .crt_bundle_attach = esp_crt_bundle_attach,
     };
 

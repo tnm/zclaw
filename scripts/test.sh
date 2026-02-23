@@ -58,6 +58,7 @@ run_host_tests() {
         test_telegram_update.c \
         test_telegram_token.c \
         test_telegram_chat_ids.c \
+        test_telegram_poll_policy.c \
         test_agent.c \
         test_tools_gpio_policy.c \
         test_llm_auth.c \
@@ -80,6 +81,7 @@ run_host_tests() {
         ../../main/telegram_update.c \
         ../../main/telegram_token.c \
         ../../main/telegram_chat_ids.c \
+        ../../main/telegram_poll_policy.c \
         ../../main/agent.c \
         ../../main/tools_gpio.c \
         $CJSON_LDFLAGS 2>&1 || {

@@ -45,15 +45,19 @@ typedef enum {
     LLM_BACKEND_ANTHROPIC = 0,
     LLM_BACKEND_OPENAI = 1,
     LLM_BACKEND_OPENROUTER = 2,
+    LLM_BACKEND_OLLAMA = 3,
 } llm_backend_t;
 
 #define LLM_API_URL_ANTHROPIC   "https://api.anthropic.com/v1/messages"
 #define LLM_API_URL_OPENAI      "https://api.openai.com/v1/chat/completions"
 #define LLM_API_URL_OPENROUTER  "https://openrouter.ai/api/v1/chat/completions"
+// Loopback default is mainly a placeholder for provisioning/runtime override.
+#define LLM_API_URL_OLLAMA      "http://127.0.0.1:11434/v1/chat/completions"
 
 #define LLM_DEFAULT_MODEL_ANTHROPIC   "claude-sonnet-4-5"
 #define LLM_DEFAULT_MODEL_OPENAI      "gpt-5.2"
 #define LLM_DEFAULT_MODEL_OPENROUTER  "minimax/minimax-m2.5"
+#define LLM_DEFAULT_MODEL_OLLAMA      "llama3.2:3b"
 
 #define LLM_API_KEY_MAX_LEN       511
 #define LLM_API_KEY_BUF_SIZE      (LLM_API_KEY_MAX_LEN + 1)

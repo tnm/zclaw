@@ -8,6 +8,7 @@
 #define NVS_KEY_LLM_BACKEND  "llm_backend"
 #define NVS_KEY_API_KEY      "api_key"
 #define NVS_KEY_LLM_MODEL    "llm_model"
+#define NVS_KEY_LLM_API_URL  "llm_api_url"
 #define NVS_KEY_TG_TOKEN     "tg_token"
 #define NVS_KEY_TG_CHAT_ID   "tg_chat_id"
 #define NVS_KEY_TG_CHAT_IDS  "tg_chat_ids"

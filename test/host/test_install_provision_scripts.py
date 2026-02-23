@@ -198,6 +198,43 @@ LAST_PORT=
                 check=False,
             )
 
+    def _run_provision_ollama_missing_api_url(self) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+
+            return subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--yes",
+                    "--skip-api-check",
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    "TestNet",
+                    "--pass",
+                    "password123",
+                    "--backend",
+                    "ollama",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
     def _run_provision_length_validation(
         self,
         *,
@@ -260,6 +297,12 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Verifying OpenRouter API key", output)
         self.assertIn("Error: API check failed in --yes mode.", output)
+
+    def test_provision_ollama_requires_api_url_in_yes_mode(self) -> None:
+        proc = self._run_provision_ollama_missing_api_url()
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Error: --api-url is required with --backend ollama in --yes mode", output)
 
     def test_provision_rejects_ssid_longer_than_32_chars(self) -> None:
         proc = self._run_provision_length_validation(
@@ -384,6 +427,75 @@ LAST_PORT=
             captured_csv = (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
             self.assertIn('tg_chat_id,data,string,"7585013353"', captured_csv)
             self.assertIn('tg_chat_ids,data,string,"7585013353,-100222333444"', captured_csv)
+
+    def test_provision_ollama_writes_normalized_api_url_without_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = idf_dir / "components" / "nvs_flash" / "nvs_partition_generator" / "nvs_partition_gen.py"
+            parttool = idf_dir / "components" / "partition_table" / "parttool.py"
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            parttool.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            parttool.write_text("# parttool stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "python",
+                "#!/bin/sh\n"
+                "if [ \"$2\" = \"generate\" ]; then\n"
+                "  cp \"$3\" \"$CSV_CAPTURE\"\n"
+                "  : > \"$4\"\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--yes",
+                    "--skip-api-check",
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    "HomeNetwork",
+                    "--pass",
+                    "password123",
+                    "--backend",
+                    "ollama",
+                    "--api-url",
+                    "http://192.168.1.10:11434",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+
+            captured_csv = (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+            self.assertIn('llm_backend,data,string,"ollama"', captured_csv)
+            self.assertIn('api_key,data,string,""', captured_csv)
+            self.assertIn(
+                'llm_api_url,data,string,"http://192.168.1.10:11434/v1/chat/completions"',
+                captured_csv,
+            )
 
     def test_erase_requires_explicit_mode(self) -> None:
         proc = subprocess.run(
@@ -583,6 +695,7 @@ LAST_PORT=
             content = env_file.read_text(encoding="utf-8")
             self.assertIn("ZCLAW_WIFI_SSID", content)
             self.assertIn("ZCLAW_API_KEY", content)
+            self.assertIn("ZCLAW_API_URL", content)
 
     def test_provision_dev_forwards_profile_values(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -783,6 +896,93 @@ LAST_PORT=
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Error: API key not set.", output)
+
+    def test_provision_dev_ollama_requires_api_url(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=ollama",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Error: API URL not set for Ollama backend.", output)
+
+    def test_provision_dev_ollama_forwards_api_url_without_api_key(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            args_file = tmp / "args.txt"
+            stub = tmp / "mock-provision.sh"
+
+            _write_executable(
+                stub,
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+            )
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=ollama",
+                        "ZCLAW_API_URL=http://192.168.1.10:11434/v1/chat/completions",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["ARGS_FILE"] = str(args_file)
+            env["ZCLAW_PROVISION_SCRIPT"] = str(stub)
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                    "--show-config",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            self.assertTrue(args_file.exists(), msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("--backend", args_text)
+            self.assertIn("ollama", args_text)
+            self.assertIn("--api-url", args_text)
+            self.assertIn("http://192.168.1.10:11434/v1/chat/completions", args_text)
+            self.assertNotIn("--api-key", args_text)
+            self.assertIn("API URL: http://192.168.1.10:11434/v1/chat/completions", output)
 
     def test_telegram_clear_backlog_errors_without_token(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -11,6 +11,7 @@ WIFI_PASS=""
 BACKEND=""
 MODEL=""
 API_KEY=""
+API_URL=""
 TG_TOKEN=""
 TG_CHAT_IDS=""
 ASSUME_YES=false
@@ -28,13 +29,14 @@ Options:
   --port <serial-port>      Serial port (auto-detect if omitted)
   --ssid <wifi-ssid>        WiFi SSID (auto-detected when possible)
   --pass <wifi-pass>        WiFi password (optional)
-  --backend <provider>      anthropic | openai | openrouter
+  --backend <provider>      anthropic | openai | openrouter | ollama
   --model <model-id>        Model ID (defaults by backend)
-  --api-key <key>           LLM API key (required unless prompted)
+  --api-key <key>           LLM API key (required for anthropic/openai/openrouter)
+  --api-url <url>           Optional custom API endpoint URL
   --tg-token <token>        Telegram bot token (optional)
   --tg-chat-id <id[,id...]> Telegram chat ID allowlist (optional)
   --tg-chat-ids <list>      Alias of --tg-chat-id
-  --yes                     Non-interactive (requires --api-key; SSID auto-detect if possible)
+  --yes                     Non-interactive (requires --api-key except ollama; SSID auto-detect if possible)
   --skip-api-check          Skip live API key verification step
   --print-detected-ssid     Print detected host WiFi SSID and exit (test/troubleshooting helper)
   -h, --help                Show help
@@ -349,15 +351,64 @@ default_model_for_backend() {
         anthropic) echo "claude-sonnet-4-5" ;;
         openai) echo "gpt-5.2" ;;
         openrouter) echo "minimax/minimax-m2.5" ;;
+        ollama) echo "llama3.2:3b" ;;
         *) echo "claude-sonnet-4-5" ;;
     esac
 }
 
 validate_backend() {
     case "$1" in
-        anthropic|openai|openrouter) return 0 ;;
+        anthropic|openai|openrouter|ollama) return 0 ;;
         *) return 1 ;;
     esac
+}
+
+normalize_ollama_api_url() {
+    local raw="$1"
+    local trimmed
+    local no_query
+    local scheme_rest
+
+    trimmed="$(trim_spaces "$raw")"
+    if [ -z "$trimmed" ]; then
+        return 1
+    fi
+
+    no_query="${trimmed%%\?*}"
+    no_query="${no_query%%\#*}"
+    no_query="${no_query%/}"
+
+    if [[ ! "$no_query" =~ ^https?:// ]]; then
+        return 1
+    fi
+
+    if [[ "$no_query" == */v1/chat/completions ]]; then
+        printf '%s\n' "$no_query"
+        return 0
+    fi
+
+    if [[ "$no_query" == */v1 ]]; then
+        printf '%s/chat/completions\n' "$no_query"
+        return 0
+    fi
+
+    scheme_rest="${no_query#*://}"
+    if [[ "$scheme_rest" != */* ]]; then
+        printf '%s/v1/chat/completions\n' "$no_query"
+        return 0
+    fi
+
+    printf '%s\n' "$no_query"
+    return 0
+}
+
+models_endpoint_from_chat_endpoint() {
+    local api_url="$1"
+    if [[ "$api_url" == */chat/completions ]]; then
+        printf '%s\n' "${api_url%/chat/completions}/models"
+        return
+    fi
+    printf '%s\n' "$api_url"
 }
 
 trim_spaces() {
@@ -454,7 +505,8 @@ flash_encryption_enabled() {
 verify_anthropic_api_key() {
     local api_key="$1"
     local model="$2"
-    local api_url="${ANTHROPIC_API_URL:-https://api.anthropic.com/v1/messages}"
+    local api_url_override="$3"
+    local api_url="${api_url_override:-${ANTHROPIC_API_URL:-https://api.anthropic.com/v1/messages}}"
     local response_file
     local http_code
     local req_body
@@ -520,7 +572,9 @@ PY
 
 verify_openai_api_key() {
     local api_key="$1"
-    local api_url="${OPENAI_API_URL:-https://api.openai.com/v1/models}"
+    local _model="$2"
+    local api_url_override="$3"
+    local api_url="${api_url_override:-${OPENAI_API_URL:-https://api.openai.com/v1/models}}"
     local response_file
     local http_code
 
@@ -577,7 +631,9 @@ PY
 
 verify_openrouter_api_key() {
     local api_key="$1"
-    local api_url="${OPENROUTER_API_URL:-https://openrouter.ai/api/v1/models}"
+    local _model="$2"
+    local api_url_override="$3"
+    local api_url="${api_url_override:-${OPENROUTER_API_URL:-https://openrouter.ai/api/v1/models}}"
     local response_file
     local http_code
     local referer="${OPENROUTER_HTTP_REFERER:-https://github.com/tnm/zclaw}"
@@ -606,6 +662,76 @@ verify_openrouter_api_key() {
     fi
 
     echo "OpenRouter API check failed (HTTP $http_code)."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$response_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+p = Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    print("Response preview: " + p.read_text(encoding="utf-8", errors="ignore")[:200])
+    raise SystemExit(0)
+
+msg = ""
+if isinstance(data, dict):
+    if isinstance(data.get("error"), dict):
+        msg = data["error"].get("message") or data["error"].get("type") or ""
+    elif isinstance(data.get("error"), str):
+        msg = data["error"]
+if msg:
+    print("API said: " + msg)
+PY
+    else
+        echo "Response preview: $(head -c 200 "$response_file")"
+    fi
+
+    rm -f "$response_file"
+    return 1
+}
+
+verify_ollama_endpoint() {
+    local api_key="$1"
+    local _model="$2"
+    local api_url="$3"
+    local models_url
+    local response_file
+    local http_code
+    local curl_args=()
+
+    if [ -z "$api_url" ]; then
+        echo "Ollama endpoint check skipped: no API URL configured."
+        return 1
+    fi
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "Warning: curl not found; skipping Ollama endpoint check."
+        return 2
+    fi
+
+    models_url="$(models_endpoint_from_chat_endpoint "$api_url")"
+    response_file="$(mktemp -t zclaw-ollama-check.XXXXXX 2>/dev/null || mktemp)"
+    curl_args=(-sS -o "$response_file" -w "%{http_code}")
+    if [ -n "$api_key" ]; then
+        curl_args+=(-H "authorization: Bearer $api_key")
+    fi
+    curl_args+=("$models_url")
+
+    if ! http_code="$(curl "${curl_args[@]}")"; then
+        rm -f "$response_file"
+        echo "Ollama endpoint check failed: network/transport error."
+        return 1
+    fi
+
+    if [ "$http_code" = "200" ]; then
+        rm -f "$response_file"
+        echo "Ollama endpoint check passed (models endpoint reachable)."
+        return 0
+    fi
+
+    echo "Ollama endpoint check failed (HTTP $http_code)."
     if command -v python3 >/dev/null 2>&1; then
         python3 - "$response_file" <<'PY'
 import json
@@ -685,6 +811,14 @@ while [ $# -gt 0 ]; do
             ;;
         --api-key=*)
             API_KEY="${1#*=}"
+            ;;
+        --api-url)
+            shift
+            [ $# -gt 0 ] || { echo "Error: --api-url requires a value"; exit 1; }
+            API_URL="$1"
+            ;;
+        --api-url=*)
+            API_URL="${1#*=}"
             ;;
         --tg-token)
             shift
@@ -799,13 +933,13 @@ if [ -z "$BACKEND" ]; then
     if [ "$ASSUME_YES" = true ]; then
         BACKEND="openai"
     else
-        read -r -p "LLM provider [openai/anthropic/openrouter] (default: openai): " BACKEND
+        read -r -p "LLM provider [openai/anthropic/openrouter/ollama] (default: openai): " BACKEND
         BACKEND="${BACKEND:-openai}"
     fi
 fi
 
 if ! validate_backend "$BACKEND"; then
-    echo "Error: invalid backend '$BACKEND' (expected anthropic|openai|openrouter)"
+    echo "Error: invalid backend '$BACKEND' (expected anthropic|openai|openrouter|ollama)"
     exit 1
 fi
 
@@ -813,7 +947,22 @@ if [ -z "$MODEL" ]; then
     MODEL="$(default_model_for_backend "$BACKEND")"
 fi
 
-if [ -z "$API_KEY" ]; then
+if [ "$BACKEND" = "ollama" ]; then
+    if [ -z "$API_URL" ]; then
+        if [ "$ASSUME_YES" = true ]; then
+            echo "Error: --api-url is required with --backend ollama in --yes mode"
+            exit 1
+        fi
+        read -r -p "Ollama endpoint URL (base or /v1/chat/completions): " API_URL
+    fi
+    API_URL="$(normalize_ollama_api_url "$API_URL" || true)"
+    if [ -z "$API_URL" ]; then
+        echo "Error: invalid --api-url. Expected http(s) URL."
+        exit 1
+    fi
+fi
+
+if [ "$BACKEND" != "ollama" ] && [ -z "$API_KEY" ]; then
     if [ "$ASSUME_YES" = true ]; then
         echo "Error: --api-key is required with --yes"
         exit 1
@@ -821,7 +970,7 @@ if [ -z "$API_KEY" ]; then
     read -r -p "LLM API key (input is visible): " API_KEY
 fi
 
-if [ -z "$API_KEY" ]; then
+if [ "$BACKEND" != "ollama" ] && [ -z "$API_KEY" ]; then
     echo "Error: API key is required"
     exit 1
 fi
@@ -842,13 +991,21 @@ if [ "$VERIFY_API_KEY" = true ]; then
             VERIFY_LABEL="OpenRouter"
             VERIFY_FN="verify_openrouter_api_key"
             ;;
+        ollama)
+            VERIFY_LABEL="Ollama endpoint"
+            VERIFY_FN="verify_ollama_endpoint"
+            ;;
     esac
 
     if [ -n "$VERIFY_FN" ]; then
         echo ""
         while true; do
-            echo "Verifying ${VERIFY_LABEL} API key with a quick connectivity check..."
-            if "$VERIFY_FN" "$API_KEY" "$MODEL"; then
+            if [ "$BACKEND" = "ollama" ]; then
+                echo "Verifying ${VERIFY_LABEL} with a quick connectivity check..."
+            else
+                echo "Verifying ${VERIFY_LABEL} API key with a quick connectivity check..."
+            fi
+            if "$VERIFY_FN" "$API_KEY" "$MODEL" "$API_URL"; then
                 break
             fi
 
@@ -859,12 +1016,24 @@ if [ "$VERIFY_API_KEY" = true ]; then
             fi
 
             echo ""
-            read -r -p "Re-enter API key and retry? [Y/n] " retry_key
+            if [ "$BACKEND" = "ollama" ]; then
+                read -r -p "Re-enter Ollama endpoint URL and retry? [Y/n] " retry_key
+            else
+                read -r -p "Re-enter API key and retry? [Y/n] " retry_key
+            fi
             retry_key="${retry_key:-Y}"
             if [[ "$retry_key" =~ ^[Yy]$ ]]; then
-                read -r -p "LLM API key (input is visible): " API_KEY
-                if [ -z "$API_KEY" ]; then
-                    echo "API key is required."
+                if [ "$BACKEND" = "ollama" ]; then
+                    read -r -p "Ollama endpoint URL (base or /v1/chat/completions): " API_URL
+                    API_URL="$(normalize_ollama_api_url "$API_URL" || true)"
+                    if [ -z "$API_URL" ]; then
+                        echo "Valid API URL is required."
+                    fi
+                else
+                    read -r -p "LLM API key (input is visible): " API_KEY
+                    if [ -z "$API_KEY" ]; then
+                        echo "API key is required."
+                    fi
                 fi
                 continue
             fi
@@ -949,6 +1118,9 @@ trap 'rm -rf "$tmpdir"' EXIT
     printf "llm_backend,data,string,%s\n" "$(csv_escape "$BACKEND")"
     printf "api_key,data,string,%s\n" "$(csv_escape "$API_KEY")"
     printf "llm_model,data,string,%s\n" "$(csv_escape "$MODEL")"
+    if [ -n "$API_URL" ]; then
+        printf "llm_api_url,data,string,%s\n" "$(csv_escape "$API_URL")"
+    fi
 
     if [ -n "$TG_TOKEN" ]; then
         printf "tg_token,data,string,%s\n" "$(csv_escape "$TG_TOKEN")"
@@ -978,6 +1150,9 @@ echo "  WiFi SSID: $WIFI_SSID"
 echo "  WiFi password: ${WIFI_PASS:-<empty>}"
 echo "  Backend:   $BACKEND"
 echo "  Model:     $MODEL"
+if [ -n "$API_URL" ]; then
+    echo "  API URL:   $API_URL"
+fi
 echo ""
 echo "Next steps:"
 echo "  1) Board reset is automatic after provisioning"

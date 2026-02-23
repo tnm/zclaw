@@ -257,7 +257,7 @@ static bool parse_anthropic_response(
 }
 
 // -----------------------------------------------------------------------------
-// OpenAI Format (OpenAI, OpenRouter)
+// OpenAI Format (OpenAI, OpenRouter, Ollama)
 // -----------------------------------------------------------------------------
 
 static char *build_openai_request(

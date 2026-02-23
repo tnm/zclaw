@@ -128,5 +128,7 @@ const char *llm_get_model(void)
 
 bool llm_is_openai_format(void)
 {
-    return s_backend == LLM_BACKEND_OPENAI || s_backend == LLM_BACKEND_OPENROUTER;
+    return s_backend == LLM_BACKEND_OPENAI ||
+           s_backend == LLM_BACKEND_OPENROUTER ||
+           s_backend == LLM_BACKEND_OLLAMA;
 }

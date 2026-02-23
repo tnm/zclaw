@@ -15,6 +15,7 @@ PASS_OVERRIDE_SET=false
 BACKEND_OVERRIDE=""
 MODEL_OVERRIDE=""
 API_KEY_OVERRIDE=""
+API_URL_OVERRIDE=""
 TG_TOKEN_OVERRIDE=""
 TG_CHAT_IDS_OVERRIDE=""
 SHOW_CONFIG=false
@@ -37,9 +38,10 @@ Overrides:
   --port <serial-port>
   --ssid <wifi-ssid>
   --pass <wifi-pass>
-  --backend <provider>   anthropic | openai | openrouter
+  --backend <provider>   anthropic | openai | openrouter | ollama
   --model <model-id>
   --api-key <key>
+  --api-url <url>          Custom API endpoint URL
   --tg-token <token>
   --tg-chat-id <id[,id...]>
   --tg-chat-ids <list>     Alias of --tg-chat-id
@@ -65,6 +67,7 @@ ZCLAW_WIFI_SSID=YourWifi
 ZCLAW_WIFI_PASS=YourWifiPassword
 ZCLAW_BACKEND=openai
 ZCLAW_MODEL=gpt-5.2
+ZCLAW_API_URL=
 
 # Prefer setting one API key here:
 ZCLAW_API_KEY=
@@ -72,6 +75,7 @@ ZCLAW_API_KEY=
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
 # OPENROUTER_API_KEY=
+# OLLAMA_API_KEY=
 
 # Optional Telegram credentials:
 ZCLAW_TG_TOKEN=
@@ -179,6 +183,9 @@ resolve_api_key() {
         openrouter)
             printf '%s\n' "${OPENROUTER_API_KEY:-}"
             ;;
+        ollama)
+            printf '%s\n' "${OLLAMA_API_KEY:-}"
+            ;;
         *)
             printf '%s\n' ""
             ;;
@@ -250,6 +257,11 @@ while [ $# -gt 0 ]; do
             API_KEY_OVERRIDE="$2"
             shift 2
             ;;
+        --api-url)
+            [ $# -ge 2 ] || { echo "Error: --api-url requires a value."; exit 1; }
+            API_URL_OVERRIDE="$2"
+            shift 2
+            ;;
         --tg-token)
             [ $# -ge 2 ] || { echo "Error: --tg-token requires a value."; exit 1; }
             TG_TOKEN_OVERRIDE="$2"
@@ -317,6 +329,7 @@ PORT="${PORT_OVERRIDE:-${ZCLAW_PORT:-}}"
 SSID="${SSID_OVERRIDE:-${ZCLAW_WIFI_SSID:-}}"
 BACKEND="${BACKEND_OVERRIDE:-${ZCLAW_BACKEND:-openai}}"
 MODEL="${MODEL_OVERRIDE:-${ZCLAW_MODEL:-}}"
+API_URL="${API_URL_OVERRIDE:-${ZCLAW_API_URL:-}}"
 TG_TOKEN="${TG_TOKEN_OVERRIDE:-${ZCLAW_TG_TOKEN:-}}"
 TG_CHAT_IDS="${TG_CHAT_IDS_OVERRIDE:-${ZCLAW_TG_CHAT_IDS:-${ZCLAW_TG_CHAT_ID:-}}}"
 
@@ -332,9 +345,15 @@ else
 fi
 
 API_KEY="$(resolve_api_key "$BACKEND")"
-if [ -z "$API_KEY" ]; then
+if [ "$BACKEND" != "ollama" ] && [ -z "$API_KEY" ]; then
     echo "Error: API key not set."
     echo "Set ZCLAW_API_KEY in $ENV_FILE, pass --api-key, or export backend-specific key env vars."
+    exit 1
+fi
+
+if [ "$BACKEND" = "ollama" ] && [ -z "$API_URL" ]; then
+    echo "Error: API URL not set for Ollama backend."
+    echo "Set ZCLAW_API_URL in $ENV_FILE or pass --api-url."
     exit 1
 fi
 
@@ -352,6 +371,7 @@ if [ "$SHOW_CONFIG" = true ]; then
     echo "  Backend: $BACKEND"
     echo "  Model: ${MODEL:-<provider default>}"
     echo "  API key: $(mask_secret "$API_KEY")"
+    echo "  API URL: ${API_URL:-<default>}"
     echo "  Telegram bot ID: $BOT_ID (safe identifier)"
     echo "  Telegram token: $(mask_secret "$TG_TOKEN")"
     echo "  Telegram chat ID(s): $(mask_chat_id "$TG_CHAT_IDS")"
@@ -371,7 +391,12 @@ PROVISION_ARGS+=(--backend "$BACKEND")
 if [ -n "$MODEL" ]; then
     PROVISION_ARGS+=(--model "$MODEL")
 fi
-PROVISION_ARGS+=(--api-key "$API_KEY")
+if [ -n "$API_KEY" ]; then
+    PROVISION_ARGS+=(--api-key "$API_KEY")
+fi
+if [ -n "$API_URL" ]; then
+    PROVISION_ARGS+=(--api-url "$API_URL")
+fi
 if [ -n "$TG_TOKEN" ]; then
     PROVISION_ARGS+=(--tg-token "$TG_TOKEN")
 fi

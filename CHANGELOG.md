@@ -8,6 +8,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - No unreleased changes yet.
 
+## [2.6.1] - 2026-02-23
+
+### Changed
+- Telegram polling now uses backend-specific timeout policy: OpenRouter uses a shorter poll timeout to reduce TLS memory-pressure overlap on constrained targets, while Anthropic/OpenAI behavior remains unchanged.
+
+### Tests
+- Added host unit tests for Telegram poll-timeout policy to ensure the OpenRouter override stays scoped and other backends keep the default timeout.
+
 ## [2.6.0] - 2026-02-23
 
 ### Added

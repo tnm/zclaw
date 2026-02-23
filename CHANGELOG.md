@@ -6,8 +6,21 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+- No unreleased changes yet.
+
+## [2.6.0] - 2026-02-23
+
+### Added
+- Telegram chat allowlist support (`tg_chat_ids`) for up to four authorized chat IDs, with per-chat reply routing for inbound Telegram messages.
+- Host coverage for Telegram allowlist parsing and outbound target resolution behavior.
+
 ### Changed
+- Provisioning now accepts comma-separated Telegram chat IDs (`--tg-chat-id` / `--tg-chat-ids`) and writes both `tg_chat_ids` and the backward-compatible primary `tg_chat_id`.
+- Telegram outbound target routing now fails closed when a requested chat ID is unauthorized.
 - Fixed debounce replay log milliseconds formatting in agent suppression logs.
+
+### Docs
+- Updated Telegram chat allowlist guidance across README and docs-site getting started/security/local-dev references.
 
 ## [2.5.3] - 2026-02-22
 

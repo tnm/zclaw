@@ -53,10 +53,11 @@ Non-interactive install:
 - `bootstrap.sh` clones/updates the repo and then runs `./install.sh`. You can inspect/verify the bootstrap flow first (including `ZCLAW_BOOTSTRAP_SHA256` integrity checks); see the [Getting Started docs](https://zclaw.dev/getting-started.html).
 - For encrypted credentials in flash, use secure mode (`--flash-mode secure` in install flow, or `./scripts/flash-secure.sh` directly).
 - After flashing, provision WiFi + LLM credentials with `./scripts/provision.sh`.
+- You can re-run either `./scripts/provision.sh` or `./scripts/provision-dev.sh` at any time (no reflash required) to update runtime credentials: WiFi SSID/password, LLM backend/model/API key, and Telegram token/chat ID.
 - Default LLM rate limits are `100/hour` and `1000/day`; change compile-time limits in `main/config.h` (`RATELIMIT_*`).
 - Quick validation path: run `./scripts/web-relay.sh` and send a test message to confirm the device can answer.
 - If serial port is busy, run `./scripts/release-port.sh` and retry.
-- For repeat local reprovisioning without retyping secrets, use `./scripts/provision-dev.sh` with a local profile file.
+- For repeat local reprovisioning without retyping secrets, use `./scripts/provision-dev.sh` with a local profile file (`provision-dev.sh` wraps `provision.sh --yes`).
 
 </details>
 

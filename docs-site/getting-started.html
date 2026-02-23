@@ -105,10 +105,10 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
           <ol>
             <li>Create bot via <a href="https://t.me/botfather">@BotFather</a>.</li>
             <li>Get chat ID via <a href="https://t.me/userinfobot">@userinfobot</a>.</li>
-            <li>Provide Telegram credentials during provisioning: use <code>--tg-token</code> and <code>--tg-chat-id</code> for non-interactive runs, or enter them when prompted in interactive provisioning.</li>
+            <li>Provide Telegram credentials during provisioning: use <code>--tg-token</code> and <code>--tg-chat-id</code> (single ID or comma-separated allowlist, up to 4 IDs) for non-interactive runs, or enter them when prompted in interactive provisioning.</li>
           </ol>
-          <p>Runtime accepts messages only from the configured chat ID.</p>
-          <p class="inline-note">To change authorized Telegram chat later, re-run provisioning with a new <code>--tg-chat-id</code> value (either <code>provision.sh</code> or <code>provision-dev.sh</code>).</p>
+          <p>Runtime accepts messages only from the configured chat ID allowlist.</p>
+          <p class="inline-note">To change authorized Telegram chats later, re-run provisioning with a new <code>--tg-chat-id</code> value (either <code>provision.sh</code> or <code>provision-dev.sh</code>).</p>
           <p class="inline-note">Telegram control commands: <code>/start</code>/<code>/help</code> (help), <code>/settings</code> (status), <code>/stop</code> (pause message intake), <code>/resume</code> (resume message intake).</p>
           <p class="inline-note">If old queued messages keep replaying during local dev, run <code>./scripts/telegram-clear-backlog.sh --show-config</code> once on your host.</p>
         </section>
@@ -151,7 +151,7 @@ what persona are you using</pre>
           <ul>
             <li>WiFi: SSID + password</li>
             <li>LLM: backend + model + API key</li>
-            <li>Telegram: bot token + authorized chat ID</li>
+            <li>Telegram: bot token + authorized chat ID allowlist</li>
           </ul>
           <p class="inline-note">No firmware reflash is required for these changes. <code>provision-dev.sh</code> is a convenience wrapper around <code>provision.sh --yes</code> with a local profile.</p>
         </section>

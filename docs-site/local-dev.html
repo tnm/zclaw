@@ -82,7 +82,7 @@
             <li>Shows Telegram bot ID (safe identifier), not full token.</li>
             <li>Supports backend-specific env fallback: <code>OPENAI_API_KEY</code>, <code>ANTHROPIC_API_KEY</code>, <code>OPENROUTER_API_KEY</code>.</li>
             <li>Allows ad-hoc overrides: <code>--port</code>, <code>--ssid</code>, <code>--backend</code>, <code>--model</code>, etc.</li>
-            <li>Updates the same NVS runtime keys as <code>provision.sh</code> (WiFi, backend/model/API key, Telegram token/chat ID).</li>
+            <li>Updates the same NVS runtime keys as <code>provision.sh</code> (WiFi, backend/model/API key, Telegram token/chat ID allowlist).</li>
           </ul>
         </section>
 
@@ -119,7 +119,7 @@
           <h2>Debugging Tips</h2>
           <ul>
             <li>If serial operations fail with busy port, stop monitor/relay or run <code>./scripts/release-port.sh</code>.</li>
-            <li>If Telegram behaves oddly, verify startup logs for <code>Loaded bot ID: ... (safe identifier)</code> and chat ID.</li>
+            <li>If Telegram behaves oddly, verify startup logs for <code>Loaded bot ID: ... (safe identifier)</code> and authorized chat IDs.</li>
             <li>If Telegram keeps replaying stale messages, run <code>./scripts/telegram-clear-backlog.sh --show-config</code> once.</li>
             <li>If you changed only runtime credentials, skip rebuild/flash and run <code>./scripts/provision-dev.sh</code> directly.</li>
             <li>Use <code>./scripts/provision-dev.sh --show-config --dry-run</code> before scripted runs to inspect resolved values safely.</li>

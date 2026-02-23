@@ -134,8 +134,8 @@ Direct chapter links:
 1. Message [@BotFather](https://t.me/botfather) on Telegram
 2. Create a new bot with `/newbot`
 3. Copy the bot token into `./scripts/provision.sh --tg-token ...`
-4. Get your chat ID from [@userinfobot](https://t.me/userinfobot) and set `--tg-chat-id ...`
-5. Only messages from your chat ID will be accepted (security feature)
+4. Get your chat ID from [@userinfobot](https://t.me/userinfobot) and set `--tg-chat-id ...` (single ID or comma-separated allowlist, up to 4 IDs)
+5. Only messages from configured chat IDs will be accepted (security feature)
 
 ### Web Relay Setup (Optional, Host Relay + Phone UI)
 
@@ -332,7 +332,7 @@ Or use the convenience scripts:
    - WiFi SSID
    - LLM provider
    - LLM API key
-4. Optional: WiFi password, Telegram bot token, Telegram chat ID
+4. Optional: WiFi password, Telegram bot token, Telegram chat ID allowlist
 5. Reboot board and watch logs with `./scripts/monitor.sh`
 
 `provision.sh` auto-detects your host WiFi SSID when possible.
@@ -505,7 +505,7 @@ Serial mode reports host round-trip and first-response latency. If firmware logs
 
 - **Rate limiting** — Default 30 requests/hour, 200/day to prevent runaway API costs
 - **Boot loop protection** — Enters safe mode after 3 consecutive boot failures
-- **Telegram authentication** — Only accepts messages from configured chat ID
+- **Telegram authentication** — Only accepts messages from configured chat IDs
 - **Provisioning gate** — Device refuses normal boot until WiFi credentials are provisioned
 - **Input validation** — Sanitizes all tool inputs to prevent injection
 - **Flash encryption** — Optional encrypted storage for credentials (see below)

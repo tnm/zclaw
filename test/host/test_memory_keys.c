@@ -35,6 +35,7 @@ TEST(sensitive_exact_keys)
     ASSERT(memory_keys_is_sensitive(NVS_KEY_WIFI_PASS));
     ASSERT(memory_keys_is_sensitive(NVS_KEY_LLM_BACKEND));
     ASSERT(memory_keys_is_sensitive(NVS_KEY_LLM_MODEL));
+    ASSERT(memory_keys_is_sensitive(NVS_KEY_LLM_API_URL));
     ASSERT(memory_keys_is_sensitive(NVS_KEY_WIFI_SSID));
 
     ASSERT(!memory_keys_is_sensitive("u_name"));

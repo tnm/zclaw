@@ -21,6 +21,7 @@ bool memory_keys_is_sensitive(const char *key)
         NVS_KEY_WIFI_PASS,
         NVS_KEY_LLM_BACKEND,
         NVS_KEY_LLM_MODEL,
+        NVS_KEY_LLM_API_URL,
         NVS_KEY_WIFI_SSID,
         NULL
     };

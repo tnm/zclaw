@@ -228,6 +228,7 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
           <li><code>bootstrap.sh</code> clones/updates the repo and then runs <code>./install.sh</code>. You can inspect/verify the bootstrap flow first (including <code>ZCLAW_BOOTSTRAP_SHA256</code> integrity checks); see <a href="getting-started.html">Getting Started</a>.</li>
           <li>For encrypted credentials in flash, use secure mode (<code>--flash-mode secure</code> in install flow, or <code>./scripts/flash-secure.sh</code> directly).</li>
           <li>After flashing, provision WiFi + LLM credentials with <code>./scripts/provision.sh</code>.</li>
+          <li>For Ollama, run it on a LAN-reachable host and pass <code>--backend ollama --api-url http://&lt;host&gt;:11434</code> during provisioning.</li>
           <li>Telegram control commands: <code>/start</code> and <code>/help</code> show help, <code>/settings</code> shows bot status, <code>/stop</code> pauses message intake, <code>/resume</code> re-enables message intake.</li>
           <li>If serial port is busy, run <code>./scripts/release-port.sh</code> and retry.</li>
           <li>Full setup/provisioning details are in the docs site index.</li>
@@ -240,7 +241,7 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
           <li>Built-in + user-defined tools</li>
           <li>GPIO read/write control with guardrails</li>
           <li>Persistent memory across reboots</li>
-          <li>Provider support for Anthropic, OpenAI, and OpenRouter</li>
+          <li>Provider support for Anthropic, OpenAI, OpenRouter, and Ollama (custom endpoint)</li>
         </ul>
 
         <h2>Hardware</h2>

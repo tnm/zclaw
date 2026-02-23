@@ -28,6 +28,28 @@ static const char *TAG = "llm";
 static llm_backend_t s_backend = LLM_BACKEND_OPENAI;
 static char s_api_key[LLM_API_KEY_BUF_SIZE] = {0};
 static char s_model[64] = {0};
+static char s_api_url_override[192] = {0};
+
+static bool llm_backend_requires_api_key(llm_backend_t backend)
+{
+    return backend != LLM_BACKEND_OLLAMA;
+}
+
+static const char *llm_backend_name(llm_backend_t backend)
+{
+    switch (backend) {
+        case LLM_BACKEND_ANTHROPIC:
+            return "Anthropic";
+        case LLM_BACKEND_OPENAI:
+            return "OpenAI";
+        case LLM_BACKEND_OPENROUTER:
+            return "OpenRouter";
+        case LLM_BACKEND_OLLAMA:
+            return "Ollama";
+        default:
+            return "Unknown";
+    }
+}
 
 #if !CONFIG_ZCLAW_STUB_LLM && !CONFIG_ZCLAW_EMULATOR_LIVE_LLM
 // Context for HTTP response accumulation (thread-safe via user_data)
@@ -431,11 +453,16 @@ esp_err_t llm_init(void)
             s_backend = LLM_BACKEND_OPENAI;
         } else if (strcmp(backend_str, "openrouter") == 0) {
             s_backend = LLM_BACKEND_OPENROUTER;
+        } else if (strcmp(backend_str, "ollama") == 0) {
+            s_backend = LLM_BACKEND_OLLAMA;
         } else {
             ESP_LOGW(TAG, "Unknown llm_backend '%s', defaulting to OpenAI", backend_str);
             s_backend = LLM_BACKEND_OPENAI;
         }
     }
+
+    // Reset key state first so re-init never keeps stale credentials in RAM.
+    memset(s_api_key, 0, sizeof(s_api_key));
 
     // Load API key from NVS
     if (!memory_get(NVS_KEY_API_KEY, s_api_key, sizeof(s_api_key))) {
@@ -450,7 +477,9 @@ esp_err_t llm_init(void)
         } else
 #endif
         {
-            ESP_LOGW(TAG, "No API key configured (or key exceeds %d bytes)", LLM_API_KEY_MAX_LEN);
+            if (llm_backend_requires_api_key(s_backend)) {
+                ESP_LOGW(TAG, "No API key configured (or key exceeds %d bytes)", LLM_API_KEY_MAX_LEN);
+            }
         }
     }
 
@@ -461,8 +490,15 @@ esp_err_t llm_init(void)
         s_model[sizeof(s_model) - 1] = '\0';
     }
 
-    const char *backend_names[] = {"Anthropic", "OpenAI", "OpenRouter"};
-    ESP_LOGI(TAG, "Backend: %s, Model: %s", backend_names[s_backend], s_model);
+    s_api_url_override[0] = '\0';
+    memory_get(NVS_KEY_LLM_API_URL, s_api_url_override, sizeof(s_api_url_override));
+
+    ESP_LOGI(TAG, "Backend: %s, Model: %s", llm_backend_name(s_backend), s_model);
+    if (s_api_url_override[0] != '\0') {
+        ESP_LOGI(TAG, "Using custom LLM API endpoint override");
+    } else if (s_backend == LLM_BACKEND_OLLAMA) {
+        ESP_LOGW(TAG, "Ollama backend using default loopback URL; set llm_api_url for network access");
+    }
 
 #ifdef CONFIG_ZCLAW_STUB_LLM
     ESP_LOGW(TAG, "LLM stub mode enabled (QEMU testing)");
@@ -490,11 +526,17 @@ llm_backend_t llm_get_backend(void)
 
 const char *llm_get_api_url(void)
 {
+    if (s_api_url_override[0] != '\0') {
+        return s_api_url_override;
+    }
+
     switch (s_backend) {
         case LLM_BACKEND_OPENAI:
             return LLM_API_URL_OPENAI;
         case LLM_BACKEND_OPENROUTER:
             return LLM_API_URL_OPENROUTER;
+        case LLM_BACKEND_OLLAMA:
+            return LLM_API_URL_OLLAMA;
         default:
             return LLM_API_URL_ANTHROPIC;
     }
@@ -507,6 +549,8 @@ const char *llm_get_default_model(void)
             return LLM_DEFAULT_MODEL_OPENAI;
         case LLM_BACKEND_OPENROUTER:
             return LLM_DEFAULT_MODEL_OPENROUTER;
+        case LLM_BACKEND_OLLAMA:
+            return LLM_DEFAULT_MODEL_OLLAMA;
         default:
             return LLM_DEFAULT_MODEL_ANTHROPIC;
     }
@@ -517,9 +561,18 @@ const char *llm_get_model(void)
     return s_model;
 }
 
+#if CONFIG_ZCLAW_STUB_LLM
+bool llm_stub_has_api_key_for_test(void)
+{
+    return s_api_key[0] != '\0';
+}
+#endif
+
 bool llm_is_openai_format(void)
 {
-    return s_backend == LLM_BACKEND_OPENAI || s_backend == LLM_BACKEND_OPENROUTER;
+    return s_backend == LLM_BACKEND_OPENAI ||
+           s_backend == LLM_BACKEND_OPENROUTER ||
+           s_backend == LLM_BACKEND_OLLAMA;
 }
 
 #ifdef CONFIG_ZCLAW_STUB_LLM
@@ -589,7 +642,7 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
 
     capture_net_diag_snapshot(&snapshot_before);
 
-    if (s_api_key[0] == '\0') {
+    if (s_api_key[0] == '\0' && llm_backend_requires_api_key(s_backend)) {
         ESP_LOGE(TAG, "No API key configured");
         capture_net_diag_snapshot(&snapshot_after);
         log_http_diag("llm_request", NULL, ESP_ERR_INVALID_STATE, -1, 0, false,
@@ -631,8 +684,10 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
     if (s_backend == LLM_BACKEND_ANTHROPIC) {
         esp_http_client_set_header(client, "x-api-key", s_api_key);
         esp_http_client_set_header(client, "anthropic-version", "2023-06-01");
-    } else {
-        // OpenAI and OpenRouter use Bearer token
+    } else if (s_backend == LLM_BACKEND_OPENAI || s_backend == LLM_BACKEND_OPENROUTER ||
+               (s_backend == LLM_BACKEND_OLLAMA && s_api_key[0] != '\0')) {
+        // OpenAI/OpenRouter use Bearer token. For Ollama, Bearer is optional and only sent
+        // when a key is explicitly provided (e.g. reverse proxy auth).
         char auth_header[LLM_AUTH_HEADER_BUF_SIZE];
         if (!llm_build_bearer_auth_header(s_api_key, auth_header, sizeof(auth_header))) {
             ESP_LOGE(TAG, "API key length exceeds supported authorization header capacity");
@@ -651,8 +706,7 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
     // Set body
     esp_http_client_set_post_field(client, request_json, strlen(request_json));
 
-    const char *backend_names[] = {"Anthropic", "OpenAI", "OpenRouter"};
-    ESP_LOGI(TAG, "Sending request to %s...", backend_names[s_backend]);
+    ESP_LOGI(TAG, "Sending request to %s...", llm_backend_name(s_backend));
 
     esp_err_t err = esp_http_client_perform(client);
 

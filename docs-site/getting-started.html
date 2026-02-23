@@ -150,9 +150,10 @@ what persona are you using</pre>
           <p>Both <code>./scripts/provision.sh</code> and <code>./scripts/provision-dev.sh</code> write the same runtime config in NVS:</p>
           <ul>
             <li>WiFi: SSID + password</li>
-            <li>LLM: backend + model + API key</li>
+            <li>LLM: backend + model + API key (or Ollama API URL)</li>
             <li>Telegram: bot token + authorized chat ID allowlist</li>
           </ul>
+          <p class="inline-note">For Ollama, point <code>--api-url</code> to a LAN host (for example <code>http://192.168.1.50:11434</code>), not <code>127.0.0.1</code>.</p>
           <p class="inline-note">No firmware reflash is required for these changes. <code>provision-dev.sh</code> is a convenience wrapper around <code>provision.sh --yes</code> with a local profile.</p>
         </section>
 

@@ -1,10 +1,18 @@
-# Build output
+# Zig build output
+zig-out/
+zig-cache/
+.zig-cache/
+
+# Build output (ESP-IDF legacy)
 build/
 build-qemu/
 build-secure/
 sdkconfig
 sdkconfig.qemu
 sdkconfig.old
+
+# zedclaw runtime data (not secrets, but user-specific)
+data/
 
 # Flash encryption keys (NEVER commit these!)
 keys/

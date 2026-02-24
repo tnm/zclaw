@@ -1,0 +1,40 @@
+# Podman Compose / Docker Compose for zedclaw desktop agent
+#
+# Usage:
+#   podman-compose run zedclaw        # Interactive mode (stdin/stdout)
+#   podman-compose up zedclaw         # Run in background (Telegram mode)
+#
+# Configuration:
+#   Copy .env.example to .env and fill in your values before running.
+#
+# Persistent data:
+#   Stored in ./data/ (mounted as volume)
+
+services:
+  zedclaw:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: zedclaw:latest
+    container_name: zedclaw
+
+    # Load API keys and config from .env file
+    env_file:
+      - .env
+
+    # Override data dir to use the mounted volume
+    environment:
+      - ZEDCLAW_DATA_DIR=/data
+
+    # Persistent storage: memories, cron jobs, user tools
+    volumes:
+      - ./data:/data:z
+
+    # Required for interactive stdin/stdout use
+    stdin_open: true
+    tty: true
+
+    # Only needed if using Telegram in polling mode (no ports required)
+    # network_mode: host  # uncomment if Ollama runs on host network
+
+    restart: unless-stopped

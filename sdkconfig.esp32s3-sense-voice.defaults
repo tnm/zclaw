@@ -1,0 +1,12 @@
+# ESP32-S3-Sense voice preset (compatibility alias)
+#
+# Backward-compatible preset file; prefer sdkconfig.esp32s3-voice.defaults.
+
+# Target
+CONFIG_IDF_TARGET="esp32s3"
+
+# Voice pipeline (experimental)
+CONFIG_ZCLAW_VOICE=y
+CONFIG_ZCLAW_VOICE_RELAY_STT=y
+CONFIG_ZCLAW_VOICE_SAMPLE_RATE_HZ=16000
+CONFIG_ZCLAW_VOICE_FRAME_MS=30

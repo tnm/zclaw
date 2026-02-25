@@ -10,7 +10,8 @@ KILL_MONITOR=false
 BOARD_PRESET=""
 BOARD_SDKCONFIG_FILE=""
 IDF_TARGET_OVERRIDE=""
-SDKCONFIG_DEFAULTS_OVERRIDE=""
+SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults"
+SDKCONFIG_FILE_OVERRIDE="sdkconfig"
 
 cd "$PROJECT_DIR"
 
@@ -19,16 +20,24 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 usage() {
-    echo "Usage: $0 [PORT] [--kill-monitor] [--board <preset>] [--box-3]"
+    echo "Usage: $0 [PORT] [--kill-monitor] [--board <preset>] [--box-3] [--s3-voice] [--s3-sense-voice]"
     echo "  --kill-monitor  Stop stale ESP-IDF monitor processes holding the selected port"
-    echo "  --board         Apply a board preset (currently: esp32s3-box-3)"
+    echo "  --board         Apply a board preset (esp32s3-box-3 | esp32s3-voice | esp32s3-sense-voice)"
     echo "  --box-3         Alias for --board esp32s3-box-3"
+    echo "  --s3-voice      Alias for --board esp32s3-voice"
+    echo "  --s3-sense-voice Alias for --board esp32s3-sense-voice"
 }
 
 normalize_board_preset() {
     case "$1" in
         esp32s3-box-3|esp32-s3-box-3|box-3|esp-box-3)
             echo "esp32s3-box-3"
+            ;;
+        esp32s3-sense-voice|esp32-s3-sense-voice|s3-sense-voice|sense-voice|voice-s3)
+            echo "esp32s3-sense-voice"
+            ;;
+        esp32s3-voice|esp32-s3-voice|s3-voice|voice-s3-generic)
+            echo "esp32s3-voice"
             ;;
         *)
             echo ""
@@ -44,7 +53,7 @@ resolve_board_preset() {
     normalized="$(normalize_board_preset "$BOARD_PRESET")"
     if [ -z "$normalized" ]; then
         echo "Error: Unknown board preset '$BOARD_PRESET'"
-        echo "Supported presets: esp32s3-box-3"
+        echo "Supported presets: esp32s3-box-3, esp32s3-voice, esp32s3-sense-voice"
         return 1
     fi
 
@@ -52,6 +61,14 @@ resolve_board_preset() {
     case "$BOARD_PRESET" in
         esp32s3-box-3)
             BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-box-3.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        esp32s3-sense-voice)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-sense-voice.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        esp32s3-voice)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-voice.defaults"
             IDF_TARGET_OVERRIDE="esp32s3"
             ;;
         *)
@@ -66,6 +83,7 @@ resolve_board_preset() {
     fi
 
     SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults;$BOARD_SDKCONFIG_FILE"
+    SDKCONFIG_FILE_OVERRIDE="build/sdkconfig.$BOARD_PRESET"
 }
 
 detect_serial_ports() {
@@ -438,6 +456,12 @@ while [ $# -gt 0 ]; do
         --box-3)
             BOARD_PRESET="esp32s3-box-3"
             ;;
+        --s3-sense-voice)
+            BOARD_PRESET="esp32s3-sense-voice"
+            ;;
+        --s3-voice)
+            BOARD_PRESET="esp32s3-voice"
+            ;;
         --help|-h)
             usage
             exit 0
@@ -533,6 +557,10 @@ if [ -n "$IDF_TARGET_OVERRIDE" ]; then
 fi
 if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
     idf_flash_cmd+=(-D "SDKCONFIG_DEFAULTS=$SDKCONFIG_DEFAULTS_OVERRIDE")
+fi
+if [ -n "$SDKCONFIG_FILE_OVERRIDE" ]; then
+    mkdir -p "$PROJECT_DIR/$(dirname "$SDKCONFIG_FILE_OVERRIDE")"
+    idf_flash_cmd+=(-D "SDKCONFIG=$SDKCONFIG_FILE_OVERRIDE")
 fi
 idf_flash_cmd+=(-p "$PORT" flash)
 "${idf_flash_cmd[@]}" 2>&1 | tee "$FLASH_LOG"

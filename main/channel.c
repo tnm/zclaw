@@ -20,6 +20,7 @@ static QueueHandle_t s_output_queue;
 
 #define LLM_BRIDGE_REQ_PREFIX  "__zclaw_llm_req__:"
 #define LLM_BRIDGE_RESP_PREFIX "__zclaw_llm_resp__:"
+#define VOICE_STT_RESP_PREFIX  "__zclaw_voice_stt_resp__:"
 
 #if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
 typedef struct {
@@ -29,6 +30,16 @@ typedef struct {
 
 static QueueHandle_t s_llm_bridge_queue = NULL;
 static char s_llm_bridge_payload[LLM_RESPONSE_BUF_SIZE];
+#endif
+
+#if CONFIG_ZCLAW_VOICE
+typedef struct {
+    size_t payload_len;
+    bool ok;
+} voice_stt_response_t;
+
+static QueueHandle_t s_voice_stt_queue = NULL;
+static char s_voice_stt_payload[CHANNEL_RX_BUF_SIZE];
 #endif
 
 #if CONFIG_ZCLAW_CHANNEL_UART
@@ -134,6 +145,48 @@ void channel_init(void)
 #endif
 }
 
+#if CONFIG_ZCLAW_VOICE
+static bool channel_try_handle_voice_stt_response_line(const char *line)
+{
+    const size_t prefix_len = strlen(VOICE_STT_RESP_PREFIX);
+    const char *status;
+    const char *payload_src;
+    size_t payload_len;
+    voice_stt_response_t resp;
+
+    if (!line || strncmp(line, VOICE_STT_RESP_PREFIX, prefix_len) != 0) {
+        return false;
+    }
+
+    if (!s_voice_stt_queue) {
+        return true;
+    }
+
+    status = line + prefix_len;
+    if (strncmp(status, "ok:", 3) == 0) {
+        resp.ok = true;
+        payload_src = status + 3;
+    } else if (strncmp(status, "err:", 4) == 0) {
+        resp.ok = false;
+        payload_src = status + 4;
+    } else {
+        resp.ok = false;
+        payload_src = "Malformed relay STT response";
+    }
+
+    payload_len = strlen(payload_src);
+    if (payload_len >= sizeof(s_voice_stt_payload)) {
+        payload_len = sizeof(s_voice_stt_payload) - 1;
+    }
+
+    memcpy(s_voice_stt_payload, payload_src, payload_len);
+    s_voice_stt_payload[payload_len] = '\0';
+    resp.payload_len = payload_len;
+    xQueueOverwrite(s_voice_stt_queue, &resp);
+    return true;
+}
+#endif
+
 // Read task: accumulate characters into lines, push to input queue
 static void channel_read_task(void *arg)
 {
@@ -189,6 +242,20 @@ static void channel_read_task(void *arg)
                 if (line_pos > 0) {
                     line_buf[line_pos] = '\0';
                     channel_io_write_bytes((const uint8_t *)"\r\n", 2, portMAX_DELAY);
+
+#if CONFIG_ZCLAW_VOICE
+                    if (channel_try_handle_voice_stt_response_line(line_buf)) {
+                        line_pos = 0;
+#if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
+                        held_echo_len = 0;
+                        prefix_check_active = true;
+                        bridge_line = false;
+                        bridge_payload_pos = 0;
+                        bridge_payload_truncated = false;
+#endif
+                        continue;
+                    }
+#endif
 
                     // Push to input queue
                     channel_msg_t msg;
@@ -318,12 +385,28 @@ esp_err_t channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
     }
 #endif
 
+#if CONFIG_ZCLAW_VOICE
+    s_voice_stt_queue = xQueueCreate(1, sizeof(voice_stt_response_t));
+    if (!s_voice_stt_queue) {
+        ESP_LOGE(TAG, "Failed to create voice relay queue");
+#if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
+        vQueueDelete(s_llm_bridge_queue);
+        s_llm_bridge_queue = NULL;
+#endif
+        return ESP_ERR_NO_MEM;
+    }
+#endif
+
     if (xTaskCreate(channel_read_task, "ch_read", CHANNEL_TASK_STACK_SIZE, NULL,
                     CHANNEL_TASK_PRIORITY, &read_task) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create channel read task");
 #if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
         vQueueDelete(s_llm_bridge_queue);
         s_llm_bridge_queue = NULL;
+#endif
+#if CONFIG_ZCLAW_VOICE
+        vQueueDelete(s_voice_stt_queue);
+        s_voice_stt_queue = NULL;
 #endif
         return ESP_ERR_NO_MEM;
     }
@@ -337,6 +420,10 @@ esp_err_t channel_start(QueueHandle_t input_queue, QueueHandle_t output_queue)
 #if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
         vQueueDelete(s_llm_bridge_queue);
         s_llm_bridge_queue = NULL;
+#endif
+#if CONFIG_ZCLAW_VOICE
+        vQueueDelete(s_voice_stt_queue);
+        s_voice_stt_queue = NULL;
 #endif
         return ESP_ERR_NO_MEM;
     }
@@ -403,3 +490,59 @@ esp_err_t channel_llm_bridge_exchange(const char *request_json,
     return ESP_OK;
 #endif
 }
+
+#if CONFIG_ZCLAW_VOICE
+esp_err_t channel_voice_stt_prepare(void)
+{
+    if (!s_voice_stt_queue) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    xQueueReset(s_voice_stt_queue);
+    return ESP_OK;
+}
+
+esp_err_t channel_voice_stt_send_line(const char *line)
+{
+    if (!line) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    channel_io_write_bytes((const uint8_t *)line, strlen(line), portMAX_DELAY);
+    channel_io_write_bytes((const uint8_t *)"\n", 1, portMAX_DELAY);
+    return ESP_OK;
+}
+
+esp_err_t channel_voice_stt_receive(char *payload,
+                                    size_t payload_size,
+                                    bool *ok,
+                                    uint32_t timeout_ms)
+{
+    TickType_t timeout_ticks;
+    voice_stt_response_t resp;
+
+    if (!payload || payload_size == 0 || !ok) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (!s_voice_stt_queue) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    if (timeout_ticks == 0) {
+        timeout_ticks = pdMS_TO_TICKS(1);
+    }
+
+    if (xQueueReceive(s_voice_stt_queue, &resp, timeout_ticks) != pdTRUE) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    *ok = resp.ok;
+    if (resp.payload_len >= payload_size) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    memcpy(payload, s_voice_stt_payload, resp.payload_len);
+    payload[resp.payload_len] = '\0';
+    return ESP_OK;
+}
+#endif

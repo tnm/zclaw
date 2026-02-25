@@ -8,6 +8,7 @@ typedef enum {
     MSG_SOURCE_CHANNEL = 0,
     MSG_SOURCE_TELEGRAM = 1,
     MSG_SOURCE_CRON = 2,
+    MSG_SOURCE_VOICE = 3,
 } message_source_t;
 
 // Shared queue payload for local channel and inbound agent messages.

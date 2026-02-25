@@ -12,19 +12,28 @@ PAD_TARGET_BYTES=""
 BOARD_PRESET=""
 BOARD_SDKCONFIG_FILE=""
 IDF_TARGET_OVERRIDE=""
-SDKCONFIG_DEFAULTS_OVERRIDE=""
+SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults"
+SDKCONFIG_FILE_OVERRIDE="sdkconfig"
 
 usage() {
-    echo "Usage: $0 [--pad-to-888kb] [--board <preset>] [--box-3]"
+    echo "Usage: $0 [--pad-to-888kb] [--board <preset>] [--box-3] [--s3-voice] [--s3-sense-voice]"
     echo "  --pad-to-888kb  Create build/zclaw-888kb.bin padded to exactly 888 KiB (909312 bytes)"
-    echo "  --board         Apply a board preset (currently: esp32s3-box-3)"
+    echo "  --board         Apply a board preset (esp32s3-box-3 | esp32s3-voice | esp32s3-sense-voice)"
     echo "  --box-3         Alias for --board esp32s3-box-3"
+    echo "  --s3-voice      Alias for --board esp32s3-voice"
+    echo "  --s3-sense-voice Alias for --board esp32s3-sense-voice"
 }
 
 normalize_board_preset() {
     case "$1" in
         esp32s3-box-3|esp32-s3-box-3|box-3|esp-box-3)
             echo "esp32s3-box-3"
+            ;;
+        esp32s3-sense-voice|esp32-s3-sense-voice|s3-sense-voice|sense-voice|voice-s3)
+            echo "esp32s3-sense-voice"
+            ;;
+        esp32s3-voice|esp32-s3-voice|s3-voice|voice-s3-generic)
+            echo "esp32s3-voice"
             ;;
         *)
             echo ""
@@ -40,7 +49,7 @@ resolve_board_preset() {
     normalized="$(normalize_board_preset "$BOARD_PRESET")"
     if [ -z "$normalized" ]; then
         echo "Error: Unknown board preset '$BOARD_PRESET'"
-        echo "Supported presets: esp32s3-box-3"
+        echo "Supported presets: esp32s3-box-3, esp32s3-voice, esp32s3-sense-voice"
         return 1
     fi
 
@@ -48,6 +57,14 @@ resolve_board_preset() {
     case "$BOARD_PRESET" in
         esp32s3-box-3)
             BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-box-3.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        esp32s3-sense-voice)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-sense-voice.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        esp32s3-voice)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-voice.defaults"
             IDF_TARGET_OVERRIDE="esp32s3"
             ;;
         *)
@@ -62,6 +79,7 @@ resolve_board_preset() {
     fi
 
     SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults;$BOARD_SDKCONFIG_FILE"
+    SDKCONFIG_FILE_OVERRIDE="build/sdkconfig.$BOARD_PRESET"
 }
 
 while [ $# -gt 0 ]; do
@@ -79,6 +97,12 @@ while [ $# -gt 0 ]; do
             ;;
         --box-3)
             BOARD_PRESET="esp32s3-box-3"
+            ;;
+        --s3-sense-voice)
+            BOARD_PRESET="esp32s3-sense-voice"
+            ;;
+        --s3-voice)
+            BOARD_PRESET="esp32s3-voice"
             ;;
         -h|--help)
             usage
@@ -149,6 +173,10 @@ if [ -n "$IDF_TARGET_OVERRIDE" ]; then
 fi
 if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
     build_cmd+=(-D "SDKCONFIG_DEFAULTS=$SDKCONFIG_DEFAULTS_OVERRIDE")
+fi
+if [ -n "$SDKCONFIG_FILE_OVERRIDE" ]; then
+    mkdir -p "$PROJECT_DIR/$(dirname "$SDKCONFIG_FILE_OVERRIDE")"
+    build_cmd+=(-D "SDKCONFIG=$SDKCONFIG_FILE_OVERRIDE")
 fi
 build_cmd+=(build)
 "${build_cmd[@]}"

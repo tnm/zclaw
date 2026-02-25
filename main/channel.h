@@ -4,6 +4,7 @@
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -23,5 +24,20 @@ esp_err_t channel_llm_bridge_exchange(const char *request_json,
                                       char *response_json,
                                       size_t response_json_size,
                                       uint32_t timeout_ms);
+
+#if CONFIG_ZCLAW_VOICE
+// Reset pending relay-STT response state before sending a new request.
+esp_err_t channel_voice_stt_prepare(void);
+
+// Send one relay-STT request line over the local channel.
+esp_err_t channel_voice_stt_send_line(const char *line);
+
+// Wait for one relay-STT response line.
+// Returns ESP_OK and fills payload/ok on success.
+esp_err_t channel_voice_stt_receive(char *payload,
+                                    size_t payload_size,
+                                    bool *ok,
+                                    uint32_t timeout_ms);
+#endif
 
 #endif // CHANNEL_H

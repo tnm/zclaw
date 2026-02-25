@@ -9,6 +9,7 @@
 #include "ratelimit.h"
 #include "ota.h"
 #include "boot_guard.h"
+#include "voice.h"
 #include "nvs_keys.h"
 #include "messages.h"
 #include "wifi_credentials.h"
@@ -553,20 +554,26 @@ void app_main(void)
         fail_fast_startup("agent_start", startup_err);
     }
 
-    // 17. Start cron task
+    // 17. Start optional voice pipeline
+    startup_err = voice_start(input_queue);
+    if (startup_err != ESP_OK) {
+        fail_fast_startup("voice_start", startup_err);
+    }
+
+    // 18. Start cron task
     startup_err = cron_start(input_queue);
     if (startup_err != ESP_OK) {
         fail_fast_startup("cron_start", startup_err);
     }
 
-    // 18. Print ready message
+    // 19. Print ready message
     ESP_LOGI(TAG, "");
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  Ready! Free heap: %lu bytes", esp_get_free_heap_size());
     ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "");
 
-    // 19. Send startup notification on Telegram
+    // 20. Send startup notification on Telegram
     if (telegram_enabled && telegram_is_configured()) {
         telegram_send_startup();
     }

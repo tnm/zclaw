@@ -22,14 +22,105 @@
 #define MAX_TOOL_ROUNDS         5       // Max tool call iterations per request
 
 // -----------------------------------------------------------------------------
+// Voice Pipeline (optional)
+// -----------------------------------------------------------------------------
+#ifdef CONFIG_ZCLAW_VOICE
+#define ZCLAW_VOICE_ENABLED     1
+#else
+#define ZCLAW_VOICE_ENABLED     0
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_SAMPLE_RATE_HZ
+#define VOICE_SAMPLE_RATE_HZ    CONFIG_ZCLAW_VOICE_SAMPLE_RATE_HZ
+#else
+#define VOICE_SAMPLE_RATE_HZ    16000
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_FRAME_MS
+#define VOICE_FRAME_MS          CONFIG_ZCLAW_VOICE_FRAME_MS
+#else
+#define VOICE_FRAME_MS          30
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_RELAY_STT
+#define VOICE_RELAY_STT_ENABLED 1
+#else
+#define VOICE_RELAY_STT_ENABLED 0
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_VAD_START_THRESHOLD
+#define VOICE_VAD_START_THRESHOLD CONFIG_ZCLAW_VOICE_VAD_START_THRESHOLD
+#else
+#define VOICE_VAD_START_THRESHOLD 1200
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_VAD_END_THRESHOLD
+#define VOICE_VAD_END_THRESHOLD CONFIG_ZCLAW_VOICE_VAD_END_THRESHOLD
+#else
+#define VOICE_VAD_END_THRESHOLD 700
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_MIN_UTTERANCE_MS
+#define VOICE_MIN_UTTERANCE_MS CONFIG_ZCLAW_VOICE_MIN_UTTERANCE_MS
+#else
+#define VOICE_MIN_UTTERANCE_MS 600
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_MAX_UTTERANCE_MS
+#define VOICE_MAX_UTTERANCE_MS CONFIG_ZCLAW_VOICE_MAX_UTTERANCE_MS
+#else
+#define VOICE_MAX_UTTERANCE_MS 6000
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_SILENCE_END_MS
+#define VOICE_SILENCE_END_MS CONFIG_ZCLAW_VOICE_SILENCE_END_MS
+#else
+#define VOICE_SILENCE_END_MS 900
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_RELAY_TIMEOUT_MS
+#define VOICE_RELAY_TIMEOUT_MS CONFIG_ZCLAW_VOICE_RELAY_TIMEOUT_MS
+#else
+#define VOICE_RELAY_TIMEOUT_MS 45000
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_I2S_PORT
+#define VOICE_I2S_PORT          CONFIG_ZCLAW_VOICE_I2S_PORT
+#else
+#define VOICE_I2S_PORT          0
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO
+#define VOICE_I2S_BCLK_GPIO     CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO
+#else
+#define VOICE_I2S_BCLK_GPIO     -1
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_I2S_WS_GPIO
+#define VOICE_I2S_WS_GPIO       CONFIG_ZCLAW_VOICE_I2S_WS_GPIO
+#else
+#define VOICE_I2S_WS_GPIO       -1
+#endif
+
+#ifdef CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO
+#define VOICE_I2S_DIN_GPIO      CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO
+#else
+#define VOICE_I2S_DIN_GPIO      -1
+#endif
+
+#define VOICE_TRANSCRIPT_MAX_LEN  (CHANNEL_RX_BUF_SIZE - 1)
+
+// -----------------------------------------------------------------------------
 // FreeRTOS Tasks
 // -----------------------------------------------------------------------------
 #define AGENT_TASK_STACK_SIZE   8192
 #define CHANNEL_TASK_STACK_SIZE 4096
 #define CRON_TASK_STACK_SIZE    4096
+#define VOICE_TASK_STACK_SIZE   4096
 #define AGENT_TASK_PRIORITY     5
 #define CHANNEL_TASK_PRIORITY   5
 #define CRON_TASK_PRIORITY      4
+#define VOICE_TASK_PRIORITY     4
 
 // -----------------------------------------------------------------------------
 // Queues

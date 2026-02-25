@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import base64
 import sys
 import unittest
 from pathlib import Path
@@ -15,6 +16,8 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 from web_relay import (  # noqa: E402
     MockAgentBridge,
     SerialAgentBridge,
+    VOICE_STT_RESP_PREFIX,
+    build_multipart_form_data,
     canonical_origin,
     create_agent_bridge,
     describe_serial_exception,
@@ -27,12 +30,36 @@ from web_relay import (  # noqa: E402
     is_request_authorized,
     normalize_api_key,
     normalize_origin,
+    pcm16le_to_wav_bytes,
     resolve_serial_port,
+    sanitize_voice_payload,
     validate_bind_security,
 )
 
 
 class WebRelayTests(unittest.TestCase):
+    def test_sanitize_voice_payload(self) -> None:
+        self.assertEqual(sanitize_voice_payload("  hello\r\nworld  "), "hello  world")
+        self.assertEqual(sanitize_voice_payload(""), "")
+
+    def test_pcm16le_to_wav_bytes(self) -> None:
+        pcm = b"\x01\x00\x02\x00\x03\x00\x04\x00"
+        wav = pcm16le_to_wav_bytes(pcm, sample_rate_hz=16000)
+        self.assertTrue(wav.startswith(b"RIFF"))
+        self.assertIn(b"WAVE", wav[:16])
+
+    def test_build_multipart_form_data(self) -> None:
+        content_type, body = build_multipart_form_data(
+            fields={"model": "whisper-1"},
+            file_field="file",
+            filename="speech.wav",
+            content_type="audio/wav",
+            file_bytes=b"abc",
+        )
+        self.assertIn("multipart/form-data; boundary=", content_type)
+        self.assertIn(b'name="model"', body)
+        self.assertIn(b'name="file"; filename="speech.wav"', body)
+
     def test_normalize_api_key(self) -> None:
         self.assertIsNone(normalize_api_key(None))
         self.assertIsNone(normalize_api_key("   "))
@@ -211,6 +238,68 @@ class WebRelayTests(unittest.TestCase):
         reply = bridge.ask("hello")
         self.assertEqual(reply, "Hi there")
         self.assertEqual(fake.writes, [b"hello\n"])
+
+    def test_serial_bridge_handles_voice_sideband(self) -> None:
+        class FakeSerial:
+            def __init__(self) -> None:
+                self.writes: list[bytes] = []
+
+            def write(self, payload: bytes) -> int:
+                self.writes.append(payload)
+                return len(payload)
+
+            def flush(self) -> None:
+                return
+
+        bridge = SerialAgentBridge(
+            port="/dev/cu.usbmodem1101",
+            baudrate=115200,
+            serial_timeout_s=0.05,
+            response_timeout_s=0.2,
+            idle_timeout_s=0.02,
+            log_serial=False,
+            voice_transcriber=lambda pcm, sr: f"len={len(pcm)} sr={sr}",
+        )
+        fake = FakeSerial()
+        bridge._serial = fake
+
+        chunk = base64.b64encode(b"\x01\x02\x03\x04").decode("ascii")
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:begin:16000"))
+        self.assertTrue(bridge._handle_voice_sideband_line(f"__zclaw_voice_stt_req__:chunk:{chunk}"))
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:end"))
+
+        outbound = b"".join(fake.writes).decode("utf-8")
+        self.assertIn(f"{VOICE_STT_RESP_PREFIX}ok:", outbound)
+        self.assertIn("len=4 sr=16000", outbound)
+
+    def test_serial_bridge_rejects_voice_chunk_without_begin(self) -> None:
+        class FakeSerial:
+            def __init__(self) -> None:
+                self.writes: list[bytes] = []
+
+            def write(self, payload: bytes) -> int:
+                self.writes.append(payload)
+                return len(payload)
+
+            def flush(self) -> None:
+                return
+
+        bridge = SerialAgentBridge(
+            port="/dev/cu.usbmodem1101",
+            baudrate=115200,
+            serial_timeout_s=0.05,
+            response_timeout_s=0.2,
+            idle_timeout_s=0.02,
+            log_serial=False,
+            voice_transcriber=lambda pcm, sr: "unused",
+        )
+        fake = FakeSerial()
+        bridge._serial = fake
+
+        bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:chunk:AAAA")
+        outbound = b"".join(fake.writes).decode("utf-8")
+        self.assertIn(f"{VOICE_STT_RESP_PREFIX}err:", outbound)
+        self.assertIn("chunk without begin", outbound)
 
     def test_mock_bridge_commands(self) -> None:
         bridge = MockAgentBridge(latency_s=0.0)

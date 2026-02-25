@@ -73,6 +73,17 @@ ESP32-S3-BOX-3 preset:
 
 `--box-3` applies the `esp32s3` target plus board-specific GPIO safety and factory-reset defaults.
 
+ESP32-S3 voice preset (experimental):
+
+```bash
+./scripts/build.sh --s3-voice
+./scripts/flash.sh --s3-voice /dev/cu.usbmodem1101
+# or encrypted flash:
+./scripts/flash-secure.sh --s3-voice /dev/cu.usbmodem1101
+```
+
+`--s3-voice` applies an opt-in profile (`sdkconfig.esp32s3-voice.defaults`) that enables `CONFIG_ZCLAW_VOICE`. This profile is intentionally separate from the default 888 KiB budgeted build. Configure board-specific I2S mic pins in `idf.py menuconfig` under `zclaw Configuration -> Voice (Experimental)`. Relay-side transcription needs `ZCLAW_STT_API_KEY` (or `OPENAI_API_KEY`) in the host environment when running `./scripts/web-relay.sh`. `--s3-sense-voice` remains as a compatibility alias.
+
 ## Quick Start
 
 ### One-Line Setup

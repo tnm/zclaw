@@ -63,6 +63,114 @@ menu "zclaw Configuration"
             use real provider APIs without guest WiFi/TLS networking.
             Intended for emulator testing only.
 
+    menu "Voice (Experimental)"
+        config ZCLAW_VOICE
+            bool "Enable on-device voice pipeline (wake word + cloud STT)"
+            default n
+            help
+                Enables experimental voice input pipeline intended for ESP32-S3-class
+                targets with I2S microphone front-ends.
+                Keep disabled for default low-footprint builds.
+
+        if ZCLAW_VOICE
+            config ZCLAW_VOICE_SAMPLE_RATE_HZ
+                int "Voice capture sample rate (Hz)"
+                range 8000 48000
+                default 16000
+                help
+                    PCM capture sample rate used by voice input.
+
+            config ZCLAW_VOICE_FRAME_MS
+                int "Voice frame size (ms)"
+                range 10 100
+                default 30
+                help
+                    Frame size used by voice capture/processing pipeline.
+
+            config ZCLAW_VOICE_RELAY_STT
+                bool "Enable host-relay STT bridge over serial"
+                default y
+                help
+                    Streams captured PCM audio to scripts/web_relay.py for
+                    cloud transcription on the host side. Keep enabled for
+                    low-footprint firmware experiments.
+
+            config ZCLAW_VOICE_VAD_START_THRESHOLD
+                int "VAD start threshold (mean abs PCM)"
+                range 100 20000
+                default 1200
+                help
+                    Mean absolute PCM amplitude required to start a voice turn.
+
+            config ZCLAW_VOICE_VAD_END_THRESHOLD
+                int "VAD end threshold (mean abs PCM)"
+                range 100 20000
+                default 700
+                help
+                    Mean absolute PCM amplitude treated as silence while
+                    capturing an utterance.
+
+            config ZCLAW_VOICE_MIN_UTTERANCE_MS
+                int "Minimum utterance duration (ms)"
+                range 200 5000
+                default 600
+                help
+                    Minimum captured speech duration before transcription.
+
+            config ZCLAW_VOICE_MAX_UTTERANCE_MS
+                int "Maximum utterance duration (ms)"
+                range 1000 20000
+                default 6000
+                help
+                    Hard cap on one captured utterance duration.
+
+            config ZCLAW_VOICE_SILENCE_END_MS
+                int "Silence hold to end utterance (ms)"
+                range 200 5000
+                default 900
+                help
+                    Consecutive silence duration that finalizes an utterance.
+
+            config ZCLAW_VOICE_RELAY_TIMEOUT_MS
+                int "Relay STT response timeout (ms)"
+                range 5000 120000
+                default 45000
+                help
+                    Maximum wait for host relay transcription response.
+
+            config ZCLAW_VOICE_I2S_PORT
+                int "I2S controller index"
+                range 0 1
+                default 0
+                help
+                    I2S peripheral index used for microphone capture.
+
+            config ZCLAW_VOICE_I2S_BCLK_GPIO
+                int "I2S BCLK GPIO"
+                range -1 48
+                default -1
+                help
+                    Bit clock pin for I2S microphone.
+                    Set to -1 to keep voice capture disabled at runtime.
+
+            config ZCLAW_VOICE_I2S_WS_GPIO
+                int "I2S WS/LRCLK GPIO"
+                range -1 48
+                default -1
+                help
+                    Word-select / LRCLK pin for I2S microphone.
+                    Set to -1 to keep voice capture disabled at runtime.
+
+            config ZCLAW_VOICE_I2S_DIN_GPIO
+                int "I2S DIN GPIO"
+                range -1 48
+                default -1
+                help
+                    Data-in pin for I2S microphone.
+                    Set to -1 to keep voice capture disabled at runtime.
+        endif
+    endmenu
+
     menu "GPIO Tool Safety"
         config ZCLAW_GPIO_MIN_PIN
             int "Minimum GPIO pin exposed to tools"

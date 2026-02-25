@@ -226,6 +226,12 @@ idf.py menuconfig</pre>
 # or encrypted flash:
 ./scripts/flash-secure.sh --box-3 /dev/cu.usbmodem1101</pre>
           <p class="inline-note"><code>--box-3</code> applies <code>esp32s3</code> target, board-safe GPIO allowlist, and factory-reset pin defaults.</p>
+          <pre># ESP32-S3 voice preset (experimental, opt-in)
+./scripts/build.sh --s3-voice
+./scripts/flash.sh --s3-voice /dev/cu.usbmodem1101
+# or encrypted flash:
+./scripts/flash-secure.sh --s3-voice /dev/cu.usbmodem1101</pre>
+          <p class="inline-note">The voice preset enables <code>CONFIG_ZCLAW_VOICE</code>. It is intentionally separate from the default 888 KiB budgeted profile. Configure board-specific I2S mic pins in <code>idf.py menuconfig</code> under <code>zclaw Configuration -&gt; Voice (Experimental)</code>. Relay-side transcription needs <code>ZCLAW_STT_API_KEY</code> (or <code>OPENAI_API_KEY</code>) in the host environment when running <code>./scripts/web-relay.sh</code>. Use <code>--s3-sense-voice</code> as a compatibility alias if needed.</p>
         </section>
 
         <section class="section">

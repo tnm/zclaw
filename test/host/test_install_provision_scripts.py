@@ -149,6 +149,67 @@ LAST_PORT=
             self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults", args_text)
             self.assertIn("build", args_text)
 
+    def test_build_s3_voice_passes_expected_idf_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            args_file = tmp / "idf-args.txt"
+            env["IDF_ARGS_FILE"] = str(args_file)
+
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+            )
+
+            proc = subprocess.run(
+                [str(BUILD_SH), "--s3-voice"],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("IDF_TARGET=esp32s3", args_text)
+            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-voice.defaults", args_text)
+            self.assertIn("build", args_text)
+
+    def test_build_s3_sense_voice_passes_expected_idf_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            args_file = tmp / "idf-args.txt"
+            env["IDF_ARGS_FILE"] = str(args_file)
+
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+            )
+
+            proc = subprocess.run(
+                [str(BUILD_SH), "--s3-sense-voice"],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("IDF_TARGET=esp32s3", args_text)
+            self.assertIn(
+                "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-sense-voice.defaults",
+                args_text,
+            )
+            self.assertIn("build", args_text)
+
     def test_flash_box3_passes_expected_idf_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -196,6 +257,111 @@ LAST_PORT=
             args_text = args_file.read_text(encoding="utf-8")
             self.assertIn("IDF_TARGET=esp32s3", args_text)
             self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults", args_text)
+            self.assertIn("-p", args_text)
+            self.assertIn(str(fake_port), args_text)
+            self.assertIn("flash", args_text)
+
+    def test_flash_s3_voice_passes_expected_idf_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+            args_file = tmp / "idf-args.txt"
+            env["IDF_ARGS_FILE"] = str(args_file)
+
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+            )
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "cat <<'EOF'\n"
+                "Chip is ESP32-S3 (QFN56)\n"
+                "MAC: AA:BB:CC:DD:EE:FF\n"
+                "EOF\n",
+            )
+            _write_executable(
+                bin_dir / "espefuse.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+            )
+
+            proc = subprocess.run(
+                [str(FLASH_SH), "--s3-voice", str(fake_port)],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("IDF_TARGET=esp32s3", args_text)
+            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-voice.defaults", args_text)
+            self.assertIn("-p", args_text)
+            self.assertIn(str(fake_port), args_text)
+            self.assertIn("flash", args_text)
+
+    def test_flash_s3_sense_voice_passes_expected_idf_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+            args_file = tmp / "idf-args.txt"
+            env["IDF_ARGS_FILE"] = str(args_file)
+
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+            )
+            _write_executable(
+                bin_dir / "lsof",
+                "#!/bin/sh\n"
+                "exit 1\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "cat <<'EOF'\n"
+                "Chip is ESP32-S3 (QFN56)\n"
+                "MAC: AA:BB:CC:DD:EE:FF\n"
+                "EOF\n",
+            )
+            _write_executable(
+                bin_dir / "espefuse.py",
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+            )
+
+            proc = subprocess.run(
+                [str(FLASH_SH), "--s3-sense-voice", str(fake_port)],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("IDF_TARGET=esp32s3", args_text)
+            self.assertIn(
+                "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-sense-voice.defaults",
+                args_text,
+            )
             self.assertIn("-p", args_text)
             self.assertIn(str(fake_port), args_text)
             self.assertIn("flash", args_text)

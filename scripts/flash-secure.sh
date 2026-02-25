@@ -17,6 +17,7 @@ BOARD_PRESET=""
 BOARD_SDKCONFIG_FILE=""
 IDF_TARGET_OVERRIDE=""
 SDKCONFIG_DEFAULTS_OVERRIDE=""
+SDKCONFIG_FILE_OVERRIDE="$BUILD_DIR/sdkconfig.secure"
 
 # Colors
 RED='\033[0;31m'
@@ -37,6 +38,12 @@ normalize_board_preset() {
         esp32s3-box-3|esp32-s3-box-3|box-3|esp-box-3)
             echo "esp32s3-box-3"
             ;;
+        esp32s3-sense-voice|esp32-s3-sense-voice|s3-sense-voice|sense-voice|voice-s3)
+            echo "esp32s3-sense-voice"
+            ;;
+        esp32s3-voice|esp32-s3-voice|s3-voice|voice-s3-generic)
+            echo "esp32s3-voice"
+            ;;
         *)
             echo ""
             ;;
@@ -51,7 +58,7 @@ resolve_board_preset() {
     normalized="$(normalize_board_preset "$BOARD_PRESET")"
     if [ -z "$normalized" ]; then
         print_error "Unknown board preset '$BOARD_PRESET'"
-        echo "Supported presets: esp32s3-box-3"
+        echo "Supported presets: esp32s3-box-3, esp32s3-voice, esp32s3-sense-voice"
         return 1
     fi
 
@@ -59,6 +66,14 @@ resolve_board_preset() {
     case "$BOARD_PRESET" in
         esp32s3-box-3)
             BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-box-3.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        esp32s3-sense-voice)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-sense-voice.defaults"
+            IDF_TARGET_OVERRIDE="esp32s3"
+            ;;
+        esp32s3-voice)
+            BOARD_SDKCONFIG_FILE="sdkconfig.esp32s3-voice.defaults"
             IDF_TARGET_OVERRIDE="esp32s3"
             ;;
         *)
@@ -73,6 +88,7 @@ resolve_board_preset() {
     fi
 
     SDKCONFIG_DEFAULTS_OVERRIDE="sdkconfig.defaults;$BOARD_SDKCONFIG_FILE;sdkconfig.secure"
+    SDKCONFIG_FILE_OVERRIDE="$BUILD_DIR/sdkconfig.$BOARD_PRESET"
 }
 
 secure_sdkconfig_defaults() {
@@ -92,6 +108,8 @@ run_secure_build() {
     if [ -n "$IDF_TARGET_OVERRIDE" ]; then
         build_cmd+=(-D "IDF_TARGET=$IDF_TARGET_OVERRIDE")
     fi
+    mkdir -p "$BUILD_DIR"
+    build_cmd+=(-D "SDKCONFIG=$SDKCONFIG_FILE_OVERRIDE")
     build_cmd+=(-D "SDKCONFIG_DEFAULTS=$defaults" build)
     "${build_cmd[@]}"
 }
@@ -404,11 +422,13 @@ flash_encryption_enabled() {
 }
 
 usage() {
-    echo "Usage: $0 [PORT] [--production] [--kill-monitor] [--board <preset>] [--box-3]"
+    echo "Usage: $0 [PORT] [--production] [--kill-monitor] [--board <preset>] [--box-3] [--s3-voice] [--s3-sense-voice]"
     echo "  --production  Burn key with hardware read protection (recommended for deployed devices)"
     echo "  --kill-monitor  Stop stale ESP-IDF monitor processes holding the selected port"
-    echo "  --board         Apply a board preset (currently: esp32s3-box-3)"
+    echo "  --board         Apply a board preset (esp32s3-box-3 | esp32s3-voice | esp32s3-sense-voice)"
     echo "  --box-3         Alias for --board esp32s3-box-3"
+    echo "  --s3-voice      Alias for --board esp32s3-voice"
+    echo "  --s3-sense-voice Alias for --board esp32s3-sense-voice"
 }
 
 source_idf_env() {
@@ -461,6 +481,12 @@ while [ $# -gt 0 ]; do
             ;;
         --box-3)
             BOARD_PRESET="esp32s3-box-3"
+            ;;
+        --s3-sense-voice)
+            BOARD_PRESET="esp32s3-sense-voice"
+            ;;
+        --s3-voice)
+            BOARD_PRESET="esp32s3-voice"
             ;;
         --help|-h)
             usage

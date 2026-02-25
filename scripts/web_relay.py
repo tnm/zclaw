@@ -8,23 +8,36 @@ messages to the ESP32 over serial (or to a built-in mock agent).
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import glob
+import io
 import json
 import logging
 import os
 import platform
+import queue
 import threading
 import time
+import wave
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Protocol
+from typing import Callable, Protocol
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 ESP_LOG_PREFIXES = ("I (", "W (", "E (", "D (", "V (")
 BOOT_LOG_PREFIXES = ("ets ", "rst:", "boot:", "SPIWP:", "mode:", "load:", "entry ")
 MAX_CHAT_MESSAGE_LEN = 4096
+VOICE_STT_REQ_PREFIX = "__zclaw_voice_stt_req__:"
+VOICE_STT_RESP_PREFIX = "__zclaw_voice_stt_resp__:"
+VOICE_STT_MAX_PCM_BYTES = 512 * 1024
+VOICE_STT_TRANSCRIPT_MAX_LEN = 300
+DEFAULT_STT_API_URL = "https://api.openai.com/v1/audio/transcriptions"
+DEFAULT_STT_MODEL = "whisper-1"
 SERIAL_BUSY_HINTS = (
     "multiple access on port",
     "resource busy",
@@ -51,6 +64,7 @@ class AppState:
     bridge_target: str
     api_key: str | None
     cors_origin: str | None
+    voice_stt_enabled: bool
 
 
 def normalize_api_key(value: str | None) -> str | None:
@@ -213,6 +227,154 @@ def resolve_serial_port(requested_port: str | None) -> str:
     return ports[0]
 
 
+def normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped if stripped else None
+
+
+def sanitize_voice_payload(value: str) -> str:
+    text = value.replace("\r", " ").replace("\n", " ").strip()
+    if not text:
+        return ""
+    if len(text) > VOICE_STT_TRANSCRIPT_MAX_LEN:
+        return text[:VOICE_STT_TRANSCRIPT_MAX_LEN].strip()
+    return text
+
+
+def pcm16le_to_wav_bytes(pcm_bytes: bytes, sample_rate_hz: int) -> bytes:
+    if sample_rate_hz <= 0:
+        raise ValueError("sample_rate_hz must be positive")
+    with io.BytesIO() as buf:
+        with wave.open(buf, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate_hz)
+            wav.writeframes(pcm_bytes)
+        return buf.getvalue()
+
+
+def build_multipart_form_data(
+    fields: dict[str, str],
+    file_field: str,
+    filename: str,
+    content_type: str,
+    file_bytes: bytes,
+) -> tuple[str, bytes]:
+    boundary = f"zclaw-boundary-{int(time.time() * 1000)}"
+    body = bytearray()
+
+    for key, value in fields.items():
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(
+            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8")
+        )
+        body.extend(value.encode("utf-8"))
+        body.extend(b"\r\n")
+
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="{file_field}"; '
+            f'filename="{filename}"\r\n'
+        ).encode("utf-8")
+    )
+    body.extend(f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"))
+    body.extend(file_bytes)
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+    return f"multipart/form-data; boundary={boundary}", bytes(body)
+
+
+def openai_transcribe_pcm(
+    pcm_bytes: bytes,
+    sample_rate_hz: int,
+    api_key: str,
+    api_url: str,
+    model: str,
+    language: str | None,
+    timeout_s: float,
+) -> str:
+    wav_bytes = pcm16le_to_wav_bytes(pcm_bytes, sample_rate_hz)
+    fields = {"model": model}
+    if language:
+        fields["language"] = language
+    content_type, body = build_multipart_form_data(
+        fields=fields,
+        file_field="file",
+        filename="speech.wav",
+        content_type="audio/wav",
+        file_bytes=wav_bytes,
+    )
+
+    req = Request(api_url, data=body, method="POST")
+    req.add_header("Authorization", f"Bearer {api_key}")
+    req.add_header("Content-Type", content_type)
+    req.add_header("Accept", "application/json")
+
+    try:
+        with urlopen(req, timeout=timeout_s) as resp:  # nosec B310 - explicit HTTPS API URL
+            raw = resp.read()
+    except HTTPError as exc:
+        details = ""
+        try:
+            details = exc.read().decode("utf-8", errors="replace").strip()
+        except Exception:
+            details = ""
+        if details:
+            raise RuntimeError(f"STT HTTP {exc.code}: {details}") from exc
+        raise RuntimeError(f"STT HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise RuntimeError(f"STT network error: {exc}") from exc
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("STT provider returned invalid JSON") from exc
+
+    text = payload.get("text")
+    if not isinstance(text, str):
+        raise RuntimeError("STT provider response missing 'text'")
+    return text.strip()
+
+
+def build_voice_transcriber_from_env() -> Callable[[bytes, int], str]:
+    api_key = normalize_optional_text(
+        os.environ.get("ZCLAW_STT_API_KEY") or os.environ.get("OPENAI_API_KEY")
+    )
+    api_url = normalize_optional_text(os.environ.get("ZCLAW_STT_API_URL")) or DEFAULT_STT_API_URL
+    model = normalize_optional_text(os.environ.get("ZCLAW_STT_MODEL")) or DEFAULT_STT_MODEL
+    language = normalize_optional_text(os.environ.get("ZCLAW_STT_LANGUAGE"))
+    timeout_s = 45.0
+
+    timeout_raw = normalize_optional_text(os.environ.get("ZCLAW_STT_TIMEOUT_S"))
+    if timeout_raw is not None:
+        try:
+            timeout_s = max(1.0, float(timeout_raw))
+        except ValueError:
+            logging.warning("Ignoring invalid ZCLAW_STT_TIMEOUT_S=%r", timeout_raw)
+
+    if api_key is None:
+        raise RuntimeError(
+            "Voice STT requires ZCLAW_STT_API_KEY or OPENAI_API_KEY in relay environment."
+        )
+
+    def _transcribe(pcm_bytes: bytes, sample_rate_hz: int) -> str:
+        return openai_transcribe_pcm(
+            pcm_bytes=pcm_bytes,
+            sample_rate_hz=sample_rate_hz,
+            api_key=api_key,
+            api_url=api_url,
+            model=model,
+            language=language,
+            timeout_s=timeout_s,
+        )
+
+    return _transcribe
+
+
 class SerialAgentBridge:
     def __init__(
         self,
@@ -222,6 +384,7 @@ class SerialAgentBridge:
         response_timeout_s: float,
         idle_timeout_s: float,
         log_serial: bool,
+        voice_transcriber: Callable[[bytes, int], str] | None = None,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
@@ -229,8 +392,23 @@ class SerialAgentBridge:
         self.response_timeout_s = response_timeout_s
         self.idle_timeout_s = idle_timeout_s
         self.log_serial = log_serial
+        self._voice_transcriber = voice_transcriber
         self._serial = None
-        self._lock = threading.Lock()
+        self._ask_lock = threading.Lock()
+        self._write_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._response_queue: queue.Queue[str] = queue.Queue(maxsize=512)
+        self._stop_reader = threading.Event()
+        self._reader_thread: threading.Thread | None = None
+        self._reader_error: Exception | None = None
+        self._active_prompt: str | None = None
+        self._voice_collecting = False
+        self._voice_sample_rate_hz = 16000
+        self._voice_pcm = bytearray()
+
+    @property
+    def voice_stt_enabled(self) -> bool:
+        return self._voice_transcriber is not None
 
     def open(self) -> None:
         try:
@@ -254,7 +432,27 @@ class SerialAgentBridge:
         time.sleep(0.2)
         self._drain_input_buffer()
 
+        if self._voice_transcriber is None:
+            try:
+                self._voice_transcriber = build_voice_transcriber_from_env()
+            except Exception as exc:
+                logging.info("Voice STT disabled: %s", exc)
+
+        self._stop_reader.clear()
+        self._reader_error = None
+        self._reader_thread = threading.Thread(
+            target=self._reader_loop,
+            name="zclaw-serial-reader",
+            daemon=True,
+        )
+        self._reader_thread.start()
+
     def close(self) -> None:
+        self._stop_reader.set()
+        if self._reader_thread is not None:
+            self._reader_thread.join(timeout=1.5)
+        self._reader_thread = None
+
         if self._serial is None:
             return
         try:
@@ -271,10 +469,10 @@ class SerialAgentBridge:
             raise RuntimeError("Serial bridge is not open")
 
         try:
-            with self._lock:
-                self._drain_input_buffer()
-                self._write_line(message)
-                response_lines = self._read_response_lines(message)
+            if self._reader_thread is None:
+                response_lines = self._ask_direct(message)
+            else:
+                response_lines = self._ask_via_reader(message)
         except TimeoutError:
             raise
         except Exception as exc:
@@ -287,6 +485,63 @@ class SerialAgentBridge:
             raise TimeoutError("No response text collected")
         return response
 
+    def _ask_via_reader(self, sent_prompt: str) -> list[str]:
+        deadline = time.monotonic() + self.response_timeout_s
+        idle_deadline = time.monotonic() + self.idle_timeout_s
+        saw_echo = False
+        response_lines: list[str] = []
+
+        with self._ask_lock:
+            self._clear_response_queue()
+            self._set_active_prompt(sent_prompt)
+            try:
+                self._write_line(sent_prompt)
+
+                while time.monotonic() < deadline:
+                    if self._reader_error is not None:
+                        raise self._reader_error
+
+                    now = time.monotonic()
+                    timeout = min(0.1, max(0.0, deadline - now))
+                    try:
+                        line = self._response_queue.get(timeout=timeout)
+                    except queue.Empty:
+                        if response_lines and now >= idle_deadline:
+                            break
+                        continue
+
+                    if not line:
+                        if response_lines and response_lines[-1] != "":
+                            response_lines.append("")
+                        continue
+
+                    if not saw_echo:
+                        if line.strip() == sent_prompt:
+                            saw_echo = True
+                        continue
+
+                    if is_probable_esp_log_line(line):
+                        continue
+                    if line.startswith(VOICE_STT_REQ_PREFIX) or line.startswith(VOICE_STT_RESP_PREFIX):
+                        continue
+
+                    response_lines.append(line)
+                    idle_deadline = time.monotonic() + self.idle_timeout_s
+            finally:
+                self._set_active_prompt(None)
+                self._clear_response_queue()
+
+        if not response_lines:
+            raise TimeoutError(
+                f"No agent response received within {self.response_timeout_s:.1f}s"
+            )
+        return response_lines
+
+    def _ask_direct(self, sent_prompt: str) -> list[str]:
+        self._drain_input_buffer()
+        self._write_line(sent_prompt)
+        return self._read_response_lines(sent_prompt)
+
     def _drain_input_buffer(self) -> None:
         if self._serial is None:
             return
@@ -298,14 +553,166 @@ class SerialAgentBridge:
                 if not data:
                     break
 
+    def _clear_response_queue(self) -> None:
+        while True:
+            try:
+                self._response_queue.get_nowait()
+            except queue.Empty:
+                return
+
+    def _set_active_prompt(self, prompt: str | None) -> None:
+        with self._state_lock:
+            self._active_prompt = prompt
+
+    def _get_active_prompt(self) -> str | None:
+        with self._state_lock:
+            return self._active_prompt
+
     def _write_line(self, line: str) -> None:
         if self._serial is None:
             return
-        payload = (line + "\n").encode("utf-8")
-        self._serial.write(payload)
-        self._serial.flush()
+        with self._write_lock:
+            payload = (line + "\n").encode("utf-8")
+            self._serial.write(payload)
+            self._serial.flush()
         if self.log_serial:
             logging.info("serial>> %s", line)
+
+    def _reader_loop(self) -> None:
+        while not self._stop_reader.is_set():
+            if self._serial is None:
+                return
+            try:
+                raw_line = self._serial.readline()
+            except Exception as exc:  # pragma: no cover - serial runtime dependent
+                if self._stop_reader.is_set():
+                    return
+                self._reader_error = exc
+                return
+
+            if not raw_line:
+                continue
+
+            line = raw_line.decode("utf-8", errors="replace").strip("\r\n")
+            if self.log_serial:
+                logging.info("serial<< %s", line)
+
+            if self._handle_voice_sideband_line(line):
+                continue
+            if line.startswith(VOICE_STT_RESP_PREFIX):
+                # Host responses are echoed by firmware; ignore the echo copy.
+                continue
+
+            if self._get_active_prompt() is None:
+                continue
+
+            try:
+                self._response_queue.put_nowait(line)
+            except queue.Full:
+                try:
+                    self._response_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                try:
+                    self._response_queue.put_nowait(line)
+                except queue.Full:
+                    pass
+
+    def _reset_voice_capture(self) -> None:
+        self._voice_collecting = False
+        self._voice_sample_rate_hz = 16000
+        self._voice_pcm = bytearray()
+
+    def _write_voice_response(self, ok: bool, payload: str) -> None:
+        status = "ok" if ok else "err"
+        sanitized = sanitize_voice_payload(payload)
+        self._write_line(f"{VOICE_STT_RESP_PREFIX}{status}:{sanitized}")
+
+    def _transcribe_voice_request(self, pcm_bytes: bytes, sample_rate_hz: int) -> str:
+        if self._voice_transcriber is None:
+            raise RuntimeError(
+                "Voice STT is disabled: set ZCLAW_STT_API_KEY or OPENAI_API_KEY in relay env."
+            )
+        return self._voice_transcriber(pcm_bytes, sample_rate_hz)
+
+    def _handle_voice_sideband_line(self, line: str) -> bool:
+        if not line.startswith(VOICE_STT_REQ_PREFIX):
+            return False
+
+        command_text = line[len(VOICE_STT_REQ_PREFIX) :]
+        command, _, rest = command_text.partition(":")
+        command = command.strip().lower()
+
+        if command == "begin":
+            self._reset_voice_capture()
+            try:
+                sample_rate = int(rest.strip()) if rest.strip() else 16000
+            except ValueError:
+                self._write_voice_response(False, "invalid sample rate")
+                return True
+
+            if sample_rate <= 0:
+                self._write_voice_response(False, "invalid sample rate")
+                return True
+
+            self._voice_collecting = True
+            self._voice_sample_rate_hz = sample_rate
+            return True
+
+        if command == "chunk":
+            if not self._voice_collecting:
+                self._write_voice_response(False, "chunk without begin")
+                return True
+            chunk_b64 = rest.strip()
+            if not chunk_b64:
+                return True
+            try:
+                chunk = base64.b64decode(chunk_b64, validate=True)
+            except (binascii.Error, ValueError):
+                self._reset_voice_capture()
+                self._write_voice_response(False, "invalid base64 chunk")
+                return True
+
+            self._voice_pcm.extend(chunk)
+            if len(self._voice_pcm) > VOICE_STT_MAX_PCM_BYTES:
+                self._reset_voice_capture()
+                self._write_voice_response(False, "audio payload too large")
+            return True
+
+        if command == "end":
+            if not self._voice_collecting:
+                self._write_voice_response(False, "end without begin")
+                return True
+
+            pcm_bytes = bytes(self._voice_pcm)
+            sample_rate_hz = self._voice_sample_rate_hz
+            self._reset_voice_capture()
+
+            if not pcm_bytes:
+                self._write_voice_response(False, "empty audio payload")
+                return True
+
+            try:
+                transcript = self._transcribe_voice_request(pcm_bytes, sample_rate_hz)
+            except Exception as exc:
+                logging.warning("voice transcription failed: %s", exc)
+                self._write_voice_response(False, f"stt failed: {exc}")
+                return True
+
+            transcript = sanitize_voice_payload(transcript)
+            if not transcript:
+                self._write_voice_response(False, "empty transcript")
+                return True
+
+            self._write_voice_response(True, transcript)
+            return True
+
+        if command == "cancel":
+            self._reset_voice_capture()
+            return True
+
+        self._write_voice_response(False, f"unknown command: {command or 'empty'}")
+        return True
 
     def _read_response_lines(self, sent_prompt: str) -> list[str]:
         if self._serial is None:
@@ -328,6 +735,11 @@ class SerialAgentBridge:
             line = raw_line.decode("utf-8", errors="replace").strip("\r\n")
             if self.log_serial:
                 logging.info("serial<< %s", line)
+
+            if self._handle_voice_sideband_line(line):
+                continue
+            if line.startswith(VOICE_STT_RESP_PREFIX):
+                continue
 
             if not line:
                 if response_lines:
@@ -442,6 +854,7 @@ def make_handler(state: AppState):
                         "ok": True,
                         "bridge_target": state.bridge_target,
                         "mode": "mock" if state.bridge_target == "mock-agent" else "serial",
+                        "voice_stt_enabled": state.voice_stt_enabled,
                     },
                 )
                 return
@@ -451,6 +864,7 @@ def make_handler(state: AppState):
                     {
                         "api_key_required": state.api_key is not None,
                         "bridge_target": state.bridge_target,
+                        "voice_stt_enabled": state.voice_stt_enabled,
                     },
                 )
                 return
@@ -977,7 +1391,8 @@ INDEX_HTML = """<!doctype html>
         const res = await fetch("/api/config", { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const cfg = await res.json();
-        setStatus(true, `Relay ready (${cfg.bridge_target})`);
+        const stt = cfg.voice_stt_enabled ? "voice STT on" : "voice STT off";
+        setStatus(true, `Relay ready (${cfg.bridge_target}, ${stt})`);
       } catch (err) {
         setStatus(false, `Relay unreachable: ${err.message}`);
       }
@@ -1098,22 +1513,25 @@ def run_server(args: argparse.Namespace) -> int:
     validate_bind_security(args.host, api_key)
     bridge, bridge_target = create_agent_bridge(args)
     bridge.open()
+    voice_stt_enabled = isinstance(bridge, SerialAgentBridge) and bridge.voice_stt_enabled
 
     state = AppState(
         bridge=bridge,
         bridge_target=bridge_target,
         api_key=api_key,
         cors_origin=cors_origin,
+        voice_stt_enabled=voice_stt_enabled,
     )
     handler = make_handler(state)
     httpd = ThreadingHTTPServer((args.host, args.port), handler)
 
     logging.info(
-        "Web relay listening on http://%s:%d (bridge=%s, api_key=%s)",
+        "Web relay listening on http://%s:%d (bridge=%s, api_key=%s, voice_stt=%s)",
         args.host,
         args.port,
         bridge_target,
         "set" if api_key else "unset",
+        "enabled" if voice_stt_enabled else "disabled",
     )
     if cors_origin:
         logging.info("CORS enabled for origin: %s", cors_origin)

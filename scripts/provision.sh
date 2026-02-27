@@ -339,7 +339,7 @@ source_idf_env() {
     if [ "$found" -eq 1 ]; then
         echo "Error: ESP-IDF found but failed to activate."
         echo "Run:"
-        echo "  cd ~/esp/esp-idf && ./install.sh esp32c3,esp32s3"
+        echo "  cd ~/esp/esp-idf && ./install.sh esp32,esp32c3,esp32c6,esp32s3"
     else
         echo "Error: ESP-IDF not found"
     fi

@@ -4,7 +4,15 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
-#if CONFIG_ZCLAW_CHANNEL_UART
+#include "soc/soc_caps.h"
+
+#if CONFIG_ZCLAW_CHANNEL_UART || !SOC_USB_SERIAL_JTAG_SUPPORTED
+#define ZCLAW_CHANNEL_USE_UART 1
+#else
+#define ZCLAW_CHANNEL_USE_UART 0
+#endif
+
+#if ZCLAW_CHANNEL_USE_UART
 #include "driver/uart.h"
 #else
 #include "driver/usb_serial_jtag.h"
@@ -31,7 +39,7 @@ static QueueHandle_t s_llm_bridge_queue = NULL;
 static char s_llm_bridge_payload[LLM_RESPONSE_BUF_SIZE];
 #endif
 
-#if CONFIG_ZCLAW_CHANNEL_UART
+#if ZCLAW_CHANNEL_USE_UART
 #define CHANNEL_UART_PORT UART_NUM_0
 #define CHANNEL_UART_BAUDRATE 115200
 
@@ -127,7 +135,7 @@ static void channel_write_normalized_text(const char *text, TickType_t timeout_t
 void channel_init(void)
 {
     channel_io_init();
-#if CONFIG_ZCLAW_CHANNEL_UART
+#if ZCLAW_CHANNEL_USE_UART
     ESP_LOGI(TAG, "UART0 channel initialized");
 #else
     ESP_LOGI(TAG, "USB serial initialized");

@@ -11,7 +11,7 @@ VERSION_FILE="$SCRIPT_DIR/VERSION"
 ZCLAW_RELEASE_VERSION="dev"
 ESP_IDF_VERSION="v5.4"
 ESP_IDF_DIR="$HOME/esp/esp-idf"
-ESP_IDF_CHIPS="esp32c3,esp32s3"
+ESP_IDF_CHIPS="esp32,esp32c3,esp32c6,esp32s3"
 PREFS_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/zclaw"
 PREFS_FILE="$PREFS_DIR/install.env"
 
@@ -1096,7 +1096,7 @@ echo ""
 
 echo -e "${BOLD}Pro tip:${NC} Add to your shell config:"
 echo -e "  ${YELLOW}alias idf='source ~/esp/esp-idf/export.sh'${NC}"
-echo -e "  ${DIM}If that fails: cd ~/esp/esp-idf && ./install.sh esp32c3,esp32s3${NC}"
+echo -e "  ${DIM}If that fails: cd ~/esp/esp-idf && ./install.sh esp32,esp32c3,esp32c6,esp32s3${NC}"
 if [ "$REMEMBER_PREFS" = true ]; then
     echo -e "  ${DIM}Installer defaults: $PREFS_FILE (${YELLOW}--no-remember${DIM} to disable)${NC}"
 fi

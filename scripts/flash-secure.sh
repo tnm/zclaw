@@ -297,7 +297,11 @@ detect_chip_name() {
     local port="$1"
     local chip_info
     local chip_name
-    chip_info=$(esptool.py --port "$port" chip_id 2>/dev/null || true)
+    if ! resolve_esptool_cmd; then
+        echo ""
+        return
+    fi
+    chip_info=$("${ESPTOOL_CMD[@]}" --port "$port" chip_id 2>/dev/null || true)
 
     # Common format: "Chip is ESP32-C3 (QFN32) ..."
     chip_name=$(echo "$chip_info" | sed -nE 's/.*Chip is ([^,(]+).*/\1/p' | head -1 | xargs)
@@ -309,6 +313,32 @@ detect_chip_name() {
     # Fallback format: "Detecting chip type... ESP32-C3"
     chip_name=$(echo "$chip_info" | sed -nE 's/.*Detecting chip type\.\.\. ([A-Za-z0-9-]+).*/\1/p' | head -1 | xargs)
     echo "$chip_name"
+}
+
+ESPTOOL_CMD=()
+
+resolve_esptool_cmd() {
+    if [ "${#ESPTOOL_CMD[@]}" -gt 0 ]; then
+        return 0
+    fi
+
+    if command -v esptool.py >/dev/null 2>&1; then
+        ESPTOOL_CMD=(esptool.py)
+        return 0
+    fi
+
+    if [ -n "${IDF_PATH:-}" ] && [ -f "$IDF_PATH/components/esptool_py/esptool/esptool.py" ]; then
+        if [ -n "${IDF_PYTHON_ENV_PATH:-}" ] && [ -x "$IDF_PYTHON_ENV_PATH/bin/python" ]; then
+            ESPTOOL_CMD=("$IDF_PYTHON_ENV_PATH/bin/python" "$IDF_PATH/components/esptool_py/esptool/esptool.py")
+            return 0
+        fi
+        if command -v python3 >/dev/null 2>&1; then
+            ESPTOOL_CMD=(python3 "$IDF_PATH/components/esptool_py/esptool/esptool.py")
+            return 0
+        fi
+    fi
+
+    return 1
 }
 
 chip_name_to_target() {
@@ -433,7 +463,7 @@ source_idf_env() {
     if [ "$found" -eq 1 ]; then
         print_error "ESP-IDF found but failed to activate."
         echo "Run:"
-        echo "  cd ~/esp/esp-idf && ./install.sh esp32c3,esp32s3"
+        echo "  cd ~/esp/esp-idf && ./install.sh esp32,esp32c3,esp32c6,esp32s3"
     else
         print_error "ESP-IDF not found"
     fi
@@ -548,7 +578,11 @@ fi
 
 # Get chip info
 echo "Reading device info from $PORT..."
-CHIP_INFO=$(esptool.py --port "$PORT" chip_id 2>/dev/null || true)
+if resolve_esptool_cmd; then
+    CHIP_INFO=$("${ESPTOOL_CMD[@]}" --port "$PORT" chip_id 2>/dev/null || true)
+else
+    CHIP_INFO=""
+fi
 
 if [ -z "$CHIP_INFO" ]; then
     print_error "Could not read chip info. Check connection."

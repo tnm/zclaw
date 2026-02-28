@@ -43,10 +43,12 @@ menu "zclaw Configuration"
 
     config ZCLAW_CHANNEL_UART
         bool "Use UART0 for local channel (QEMU-friendly)"
+        default y if !SOC_USB_SERIAL_JTAG_SUPPORTED
         default n
         help
             Uses UART0 instead of USB Serial/JTAG for local input/output.
             Enable this for interactive QEMU use.
+            Targets without USB Serial/JTAG default to UART automatically.
 
     config ZCLAW_EMULATOR_MODE
         bool "Offline emulator mode (skip WiFi/NTP/Telegram startup)"

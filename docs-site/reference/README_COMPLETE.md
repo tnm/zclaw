@@ -62,6 +62,9 @@ Good choice: [Seeed XIAO ESP32-C3](https://www.seeedstudio.com/Seeed-XIAO-ESP32C
 
 Other options: ESP32-DevKitM, Adafruit QT Py, any generic ESP32 module.
 
+For ESP32-WROOM/ESP32 DevKit (`esp32` target), local chat automatically uses UART0 on targets
+without USB Serial/JTAG support. No manual `CONFIG_ZCLAW_CHANNEL_UART=y` toggle is required.
+
 ESP32-S3-BOX-3 preset:
 
 ```bash
@@ -286,7 +289,7 @@ User tools are compositions of built-in primitives (`gpio_write`, `delay`, `memo
 # Install ESP-IDF v5.4
 mkdir -p ~/esp && cd ~/esp
 git clone -b v5.4 --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf && ./install.sh esp32c3,esp32s3
+cd esp-idf && ./install.sh esp32,esp32c3,esp32c6,esp32s3
 ```
 
 </details>
@@ -308,7 +311,7 @@ If `source ~/esp/esp-idf/export.sh` fails, repair ESP-IDF tools:
 
 ```bash
 cd ~/esp/esp-idf
-./install.sh esp32c3,esp32s3
+./install.sh esp32,esp32c3,esp32c6,esp32s3
 ```
 
 Or use the convenience scripts:
@@ -336,6 +339,7 @@ Or use the convenience scripts:
 
 `flash.sh` and `flash-secure.sh` auto-detect connected chip type and prompt to run
 `idf.py set-target <chip>` when project target does not match the board.
+If you switch between families (for example `esp32s3` to `esp32`), accept that prompt once.
 
 ### First Boot
 

@@ -98,6 +98,7 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
             <li>Enter WiFi SSID, LLM provider, and model. Use API key for Anthropic/OpenAI/OpenRouter, or API URL for Ollama. Optional Telegram fields can be filled now or later.</li>
             <li>Reboot and inspect logs with <code>./scripts/monitor.sh</code>.</li>
           </ol>
+          <p class="inline-note">ESP32-WROOM/ESP32 DevKit boards run target <code>esp32</code>; local chat uses UART0 automatically on targets without USB Serial/JTAG (no manual <code>CONFIG_ZCLAW_CHANNEL_UART</code> toggle needed).</p>
         </section>
 
         <section class="section">
@@ -220,6 +221,7 @@ idf.py menuconfig</pre>
         <section class="section">
           <h2>Other Board Notes</h2>
           <p>Most boards work with the generic target flow, but some need explicit board-safe pin/reset defaults.</p>
+          <p class="inline-note">If you move between chips (for example, C3/S3 to WROOM), accept the flash-script prompt to run <code>idf.py set-target &lt;chip&gt;</code> (or run it manually once).</p>
           <pre># ESP32-S3-BOX-3 preset
 ./scripts/build.sh --box-3
 ./scripts/flash.sh --box-3 /dev/cu.usbmodem1101
@@ -232,7 +234,7 @@ idf.py menuconfig</pre>
           <h2>If Something Breaks</h2>
           <pre># ESP-IDF repair
 cd ~/esp/esp-idf
-./install.sh esp32c3,esp32s3
+./install.sh esp32,esp32c3,esp32c6,esp32s3
 
 # Build/test routines
 ./scripts/build.sh

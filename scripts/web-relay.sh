@@ -31,6 +31,7 @@ usage() {
     echo "  - web_relay.py defaults to --host 127.0.0.1"
     echo "  - binding non-loopback hosts requires ZCLAW_WEB_API_KEY"
     echo "  - voice STT sideband needs ZCLAW_STT_API_KEY (or OPENAI_API_KEY)"
+    echo "  - optional wake phrase gate: ZCLAW_VOICE_WAKE_PHRASE='hey zclaw' (or --voice-wake-phrase)"
     echo ""
     echo "All other flags are forwarded to scripts/web_relay.py."
 }

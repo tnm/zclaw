@@ -18,6 +18,11 @@ BOARD_SDKCONFIG_FILE=""
 IDF_TARGET_OVERRIDE=""
 SDKCONFIG_DEFAULTS_OVERRIDE=""
 SDKCONFIG_FILE_OVERRIDE="$BUILD_DIR/sdkconfig.secure"
+VOICE_I2S_PORT_OVERRIDE=""
+VOICE_I2S_BCLK_OVERRIDE=""
+VOICE_I2S_WS_OVERRIDE=""
+VOICE_I2S_DIN_OVERRIDE=""
+VOICE_SDKCONFIG_FILE_REL="$BUILD_DIR/sdkconfig.voice-overrides.defaults"
 
 # Colors
 RED='\033[0;31m'
@@ -91,12 +96,107 @@ resolve_board_preset() {
     SDKCONFIG_FILE_OVERRIDE="$BUILD_DIR/sdkconfig.$BOARD_PRESET"
 }
 
-secure_sdkconfig_defaults() {
-    if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
-        echo "$SDKCONFIG_DEFAULTS_OVERRIDE"
-    else
-        echo "sdkconfig.defaults;sdkconfig.secure"
+is_integer() {
+    [[ "$1" =~ ^-?[0-9]+$ ]]
+}
+
+validate_int_range() {
+    local flag="$1"
+    local value="$2"
+    local min="$3"
+    local max="$4"
+
+    if ! is_integer "$value"; then
+        print_error "$flag expects an integer value (got '$value')"
+        return 1
     fi
+    if [ "$value" -lt "$min" ] || [ "$value" -gt "$max" ]; then
+        print_error "$flag out of range ($min..$max): $value"
+        return 1
+    fi
+}
+
+configure_voice_i2s_overrides() {
+    local has_overrides=0
+    local voice_file_abs="$PROJECT_DIR/$VOICE_SDKCONFIG_FILE_REL"
+
+    [ -n "$VOICE_I2S_PORT_OVERRIDE" ] && has_overrides=1
+    [ -n "$VOICE_I2S_BCLK_OVERRIDE" ] && has_overrides=1
+    [ -n "$VOICE_I2S_WS_OVERRIDE" ] && has_overrides=1
+    [ -n "$VOICE_I2S_DIN_OVERRIDE" ] && has_overrides=1
+    [ "$has_overrides" -eq 1 ] || return 0
+
+    if [ -n "$VOICE_I2S_PORT_OVERRIDE" ] && ! validate_int_range "--voice-i2s-port" "$VOICE_I2S_PORT_OVERRIDE" 0 1; then
+        return 1
+    fi
+    if [ -n "$VOICE_I2S_BCLK_OVERRIDE" ] && ! validate_int_range "--voice-i2s-bclk" "$VOICE_I2S_BCLK_OVERRIDE" -1 48; then
+        return 1
+    fi
+    if [ -n "$VOICE_I2S_WS_OVERRIDE" ] && ! validate_int_range "--voice-i2s-ws" "$VOICE_I2S_WS_OVERRIDE" -1 48; then
+        return 1
+    fi
+    if [ -n "$VOICE_I2S_DIN_OVERRIDE" ] && ! validate_int_range "--voice-i2s-din" "$VOICE_I2S_DIN_OVERRIDE" -1 48; then
+        return 1
+    fi
+
+    if [ "$BOARD_PRESET" = "esp32s3-box-3" ]; then
+        print_warning "Voice I2S overrides provided with non-voice board preset '$BOARD_PRESET'."
+        echo "         These only take effect when CONFIG_ZCLAW_VOICE is enabled."
+    fi
+
+    mkdir -p "$PROJECT_DIR/$(dirname "$VOICE_SDKCONFIG_FILE_REL")"
+    : > "$voice_file_abs"
+
+    [ -n "$VOICE_I2S_PORT_OVERRIDE" ] && echo "CONFIG_ZCLAW_VOICE_I2S_PORT=$VOICE_I2S_PORT_OVERRIDE" >> "$voice_file_abs"
+    [ -n "$VOICE_I2S_BCLK_OVERRIDE" ] && echo "CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=$VOICE_I2S_BCLK_OVERRIDE" >> "$voice_file_abs"
+    [ -n "$VOICE_I2S_WS_OVERRIDE" ] && echo "CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=$VOICE_I2S_WS_OVERRIDE" >> "$voice_file_abs"
+    [ -n "$VOICE_I2S_DIN_OVERRIDE" ] && echo "CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=$VOICE_I2S_DIN_OVERRIDE" >> "$voice_file_abs"
+
+    apply_voice_i2s_overrides_to_sdkconfig
+}
+
+upsert_sdkconfig_value() {
+    local cfg_path="$1"
+    local key="$2"
+    local value="$3"
+    local tmp_file
+
+    mkdir -p "$(dirname "$cfg_path")"
+    [ -f "$cfg_path" ] || touch "$cfg_path"
+
+    if grep -q "^${key}=" "$cfg_path"; then
+        tmp_file="$(mktemp -t zclaw-sdkcfg.XXXXXX 2>/dev/null || mktemp)"
+        awk -v key="$key" -v value="$value" '
+            BEGIN { prefix = key "=" }
+            index($0, prefix) == 1 { print key "=" value; next }
+            { print }
+        ' "$cfg_path" > "$tmp_file"
+        mv "$tmp_file" "$cfg_path"
+    else
+        printf '%s=%s\n' "$key" "$value" >> "$cfg_path"
+    fi
+}
+
+apply_voice_i2s_overrides_to_sdkconfig() {
+    local cfg_path="$PROJECT_DIR/$SDKCONFIG_FILE_OVERRIDE"
+
+    [ -n "$VOICE_I2S_PORT_OVERRIDE" ] && upsert_sdkconfig_value "$cfg_path" "CONFIG_ZCLAW_VOICE_I2S_PORT" "$VOICE_I2S_PORT_OVERRIDE"
+    [ -n "$VOICE_I2S_BCLK_OVERRIDE" ] && upsert_sdkconfig_value "$cfg_path" "CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO" "$VOICE_I2S_BCLK_OVERRIDE"
+    [ -n "$VOICE_I2S_WS_OVERRIDE" ] && upsert_sdkconfig_value "$cfg_path" "CONFIG_ZCLAW_VOICE_I2S_WS_GPIO" "$VOICE_I2S_WS_OVERRIDE"
+    [ -n "$VOICE_I2S_DIN_OVERRIDE" ] && upsert_sdkconfig_value "$cfg_path" "CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO" "$VOICE_I2S_DIN_OVERRIDE"
+}
+
+secure_sdkconfig_defaults() {
+    local defaults
+    if [ -n "$SDKCONFIG_DEFAULTS_OVERRIDE" ]; then
+        defaults="$SDKCONFIG_DEFAULTS_OVERRIDE"
+    else
+        defaults="sdkconfig.defaults;sdkconfig.secure"
+    fi
+    if [ -n "$VOICE_I2S_PORT_OVERRIDE" ] || [ -n "$VOICE_I2S_BCLK_OVERRIDE" ] || [ -n "$VOICE_I2S_WS_OVERRIDE" ] || [ -n "$VOICE_I2S_DIN_OVERRIDE" ]; then
+        defaults="$defaults;$VOICE_SDKCONFIG_FILE_REL"
+    fi
+    echo "$defaults"
 }
 
 run_secure_build() {
@@ -422,13 +522,17 @@ flash_encryption_enabled() {
 }
 
 usage() {
-    echo "Usage: $0 [PORT] [--production] [--kill-monitor] [--board <preset>] [--box-3] [--s3-voice] [--s3-sense-voice]"
+    echo "Usage: $0 [PORT] [--production] [--kill-monitor] [--board <preset>] [--box-3] [--s3-voice] [--s3-sense-voice] [voice options]"
     echo "  --production  Burn key with hardware read protection (recommended for deployed devices)"
     echo "  --kill-monitor  Stop stale ESP-IDF monitor processes holding the selected port"
     echo "  --board         Apply a board preset (esp32s3-box-3 | esp32s3-voice | esp32s3-sense-voice)"
     echo "  --box-3         Alias for --board esp32s3-box-3"
     echo "  --s3-voice      Alias for --board esp32s3-voice"
     echo "  --s3-sense-voice Alias for --board esp32s3-sense-voice"
+    echo "  --voice-i2s-port <0|1>      Override CONFIG_ZCLAW_VOICE_I2S_PORT"
+    echo "  --voice-i2s-bclk <-1..48>   Override CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO"
+    echo "  --voice-i2s-ws <-1..48>     Override CONFIG_ZCLAW_VOICE_I2S_WS_GPIO"
+    echo "  --voice-i2s-din <-1..48>    Override CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO"
 }
 
 source_idf_env() {
@@ -488,6 +592,38 @@ while [ $# -gt 0 ]; do
         --s3-voice)
             BOARD_PRESET="esp32s3-voice"
             ;;
+        --voice-i2s-port)
+            shift
+            [ $# -gt 0 ] || { print_error "--voice-i2s-port requires a value"; usage; exit 1; }
+            VOICE_I2S_PORT_OVERRIDE="$1"
+            ;;
+        --voice-i2s-port=*)
+            VOICE_I2S_PORT_OVERRIDE="${1#*=}"
+            ;;
+        --voice-i2s-bclk)
+            shift
+            [ $# -gt 0 ] || { print_error "--voice-i2s-bclk requires a value"; usage; exit 1; }
+            VOICE_I2S_BCLK_OVERRIDE="$1"
+            ;;
+        --voice-i2s-bclk=*)
+            VOICE_I2S_BCLK_OVERRIDE="${1#*=}"
+            ;;
+        --voice-i2s-ws)
+            shift
+            [ $# -gt 0 ] || { print_error "--voice-i2s-ws requires a value"; usage; exit 1; }
+            VOICE_I2S_WS_OVERRIDE="$1"
+            ;;
+        --voice-i2s-ws=*)
+            VOICE_I2S_WS_OVERRIDE="${1#*=}"
+            ;;
+        --voice-i2s-din)
+            shift
+            [ $# -gt 0 ] || { print_error "--voice-i2s-din requires a value"; usage; exit 1; }
+            VOICE_I2S_DIN_OVERRIDE="$1"
+            ;;
+        --voice-i2s-din=*)
+            VOICE_I2S_DIN_OVERRIDE="${1#*=}"
+            ;;
         --help|-h)
             usage
             exit 0
@@ -512,6 +648,7 @@ done
 
 source_idf_env || exit 1
 resolve_board_preset || exit 1
+configure_voice_i2s_overrides || exit 1
 
 # Auto-detect port if not provided
 if [ -z "$PORT" ]; then
@@ -570,6 +707,9 @@ else
 fi
 if [ -n "$BOARD_PRESET" ]; then
     print_status "Board preset: $BOARD_PRESET"
+fi
+if [ -n "$VOICE_I2S_BCLK_OVERRIDE" ] || [ -n "$VOICE_I2S_WS_OVERRIDE" ] || [ -n "$VOICE_I2S_DIN_OVERRIDE" ] || [ -n "$VOICE_I2S_PORT_OVERRIDE" ]; then
+    print_status "Voice I2S overrides: port=${VOICE_I2S_PORT_OVERRIDE:-<default>} bclk=${VOICE_I2S_BCLK_OVERRIDE:-<default>} ws=${VOICE_I2S_WS_OVERRIDE:-<default>} din=${VOICE_I2S_DIN_OVERRIDE:-<default>}"
 fi
 
 # Get chip info

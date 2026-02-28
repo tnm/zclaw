@@ -65,6 +65,7 @@ class AppState:
     api_key: str | None
     cors_origin: str | None
     voice_stt_enabled: bool
+    voice_stt_handler: Callable[[bytes, int], str] | None
 
 
 def normalize_api_key(value: str | None) -> str | None:
@@ -243,6 +244,67 @@ def sanitize_voice_payload(value: str) -> str:
     return text
 
 
+def normalize_voice_match_text(value: str) -> str:
+    collapsed: list[str] = []
+    pending_space = False
+
+    for ch in value.lower():
+        if ch.isalnum():
+            if pending_space and collapsed:
+                collapsed.append(" ")
+            collapsed.append(ch)
+            pending_space = False
+        else:
+            pending_space = True
+
+    return "".join(collapsed).strip()
+
+
+def normalize_voice_match_compact(value: str) -> str:
+    compact: list[str] = []
+    for ch in value.lower():
+        if ch.isalnum():
+            compact.append(ch)
+    return "".join(compact)
+
+
+def transcribe_voice_pcm(
+    pcm_bytes: bytes,
+    sample_rate_hz: int,
+    voice_transcriber: Callable[[bytes, int], str] | None,
+    voice_wake_phrase: str | None = None,
+) -> str:
+    if voice_transcriber is None:
+        raise RuntimeError(
+            "Voice STT is disabled: set ZCLAW_STT_API_KEY or OPENAI_API_KEY in relay env."
+        )
+    if sample_rate_hz <= 0:
+        raise RuntimeError("invalid sample rate")
+    if not pcm_bytes:
+        raise RuntimeError("empty audio payload")
+
+    transcript = sanitize_voice_payload(voice_transcriber(pcm_bytes, sample_rate_hz))
+    if not transcript:
+        raise RuntimeError("empty transcript")
+
+    wake_phrase = normalize_optional_text(voice_wake_phrase)
+    if wake_phrase is not None:
+        wake_phrase_norm = normalize_voice_match_text(wake_phrase)
+        wake_phrase_compact = normalize_voice_match_compact(wake_phrase)
+        wake_phrase_matched = wake_phrase_norm in normalize_voice_match_text(transcript)
+        if not wake_phrase_matched and wake_phrase_compact:
+            wake_phrase_matched = wake_phrase_compact in normalize_voice_match_compact(transcript)
+        if not wake_phrase_matched:
+            logging.info(
+                "Voice wake phrase miss (required=%r, transcript=%r)",
+                wake_phrase,
+                transcript,
+            )
+            raise RuntimeError("wake phrase not detected")
+
+    return transcript
+
+
 def pcm16le_to_wav_bytes(pcm_bytes: bytes, sample_rate_hz: int) -> bytes:
     if sample_rate_hz <= 0:
         raise ValueError("sample_rate_hz must be positive")
@@ -385,6 +447,7 @@ class SerialAgentBridge:
         idle_timeout_s: float,
         log_serial: bool,
         voice_transcriber: Callable[[bytes, int], str] | None = None,
+        voice_wake_phrase: str | None = None,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
@@ -393,6 +456,7 @@ class SerialAgentBridge:
         self.idle_timeout_s = idle_timeout_s
         self.log_serial = log_serial
         self._voice_transcriber = voice_transcriber
+        self._voice_wake_phrase = normalize_optional_text(voice_wake_phrase)
         self._serial = None
         self._ask_lock = threading.Lock()
         self._write_lock = threading.Lock()
@@ -409,6 +473,10 @@ class SerialAgentBridge:
     @property
     def voice_stt_enabled(self) -> bool:
         return self._voice_transcriber is not None
+
+    @property
+    def voice_wake_phrase(self) -> str | None:
+        return self._voice_wake_phrase
 
     def open(self) -> None:
         try:
@@ -628,12 +696,13 @@ class SerialAgentBridge:
         sanitized = sanitize_voice_payload(payload)
         self._write_line(f"{VOICE_STT_RESP_PREFIX}{status}:{sanitized}")
 
-    def _transcribe_voice_request(self, pcm_bytes: bytes, sample_rate_hz: int) -> str:
-        if self._voice_transcriber is None:
-            raise RuntimeError(
-                "Voice STT is disabled: set ZCLAW_STT_API_KEY or OPENAI_API_KEY in relay env."
-            )
-        return self._voice_transcriber(pcm_bytes, sample_rate_hz)
+    def process_voice_pcm(self, pcm_bytes: bytes, sample_rate_hz: int) -> str:
+        return transcribe_voice_pcm(
+            pcm_bytes=pcm_bytes,
+            sample_rate_hz=sample_rate_hz,
+            voice_transcriber=self._voice_transcriber,
+            voice_wake_phrase=self._voice_wake_phrase,
+        )
 
     def _handle_voice_sideband_line(self, line: str) -> bool:
         if not line.startswith(VOICE_STT_REQ_PREFIX):
@@ -693,15 +762,19 @@ class SerialAgentBridge:
                 return True
 
             try:
-                transcript = self._transcribe_voice_request(pcm_bytes, sample_rate_hz)
+                transcript = self.process_voice_pcm(pcm_bytes, sample_rate_hz)
             except Exception as exc:
+                message = sanitize_voice_payload(str(exc))
+                if message in {
+                    "invalid sample rate",
+                    "empty audio payload",
+                    "empty transcript",
+                    "wake phrase not detected",
+                }:
+                    self._write_voice_response(False, message)
+                    return True
                 logging.warning("voice transcription failed: %s", exc)
                 self._write_voice_response(False, f"stt failed: {exc}")
-                return True
-
-            transcript = sanitize_voice_payload(transcript)
-            if not transcript:
-                self._write_voice_response(False, "empty transcript")
                 return True
 
             self._write_voice_response(True, transcript)
@@ -811,6 +884,9 @@ def create_agent_bridge(args: argparse.Namespace) -> tuple[AgentBridge, str]:
         return MockAgentBridge(latency_s=args.mock_latency), "mock-agent"
 
     port = resolve_serial_port(args.serial_port)
+    voice_wake_phrase = normalize_optional_text(
+        args.voice_wake_phrase or os.environ.get("ZCLAW_VOICE_WAKE_PHRASE")
+    )
     bridge = SerialAgentBridge(
         port=port,
         baudrate=args.baud,
@@ -818,6 +894,7 @@ def create_agent_bridge(args: argparse.Namespace) -> tuple[AgentBridge, str]:
         response_timeout_s=args.response_timeout,
         idle_timeout_s=args.idle_timeout,
         log_serial=args.log_serial,
+        voice_wake_phrase=voice_wake_phrase,
     )
     return bridge, port
 
@@ -839,7 +916,10 @@ def make_handler(state: AppState):
             self.send_response(HTTPStatus.NO_CONTENT)
             self._set_common_headers("text/plain; charset=utf-8")
             self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type,X-Zclaw-Key")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type,X-Zclaw-Key,X-Zclaw-Sample-Rate",
+            )
             self.end_headers()
 
         def do_GET(self) -> None:  # noqa: N802
@@ -872,16 +952,16 @@ def make_handler(state: AppState):
 
         def do_POST(self) -> None:  # noqa: N802
             parsed = urlparse(self.path)
-            if parsed.path != "/api/chat":
-                self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
+            if parsed.path == "/api/chat":
+                self._handle_chat_post()
                 return
+            if parsed.path == "/api/voice/stt":
+                self._handle_voice_stt_post()
+                return
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "Not found"})
 
-            if not is_post_origin_allowed(
-                self.headers.get("Origin"),
-                self.headers.get("Host"),
-                state.cors_origin,
-            ):
-                self._send_json(HTTPStatus.FORBIDDEN, {"error": "Origin not allowed"})
+        def _handle_chat_post(self) -> None:
+            if not self._is_post_request_authorized():
                 return
 
             if not is_json_content_type(self.headers.get("Content-Type")):
@@ -889,11 +969,6 @@ def make_handler(state: AppState):
                     HTTPStatus.BAD_REQUEST,
                     {"error": "Content-Type must be application/json"},
                 )
-                return
-
-            provided_key = normalize_api_key(self.headers.get("X-Zclaw-Key"))
-            if not is_request_authorized(provided_key, state.api_key):
-                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
                 return
 
             payload = self._read_json()
@@ -940,6 +1015,83 @@ def make_handler(state: AppState):
                     "elapsed_ms": elapsed_ms,
                 },
             )
+
+        def _handle_voice_stt_post(self) -> None:
+            if not self._is_post_request_authorized():
+                return
+
+            sample_rate_raw = normalize_optional_text(self.headers.get("X-Zclaw-Sample-Rate"))
+            if sample_rate_raw is None:
+                self._send_text(HTTPStatus.BAD_REQUEST, "missing sample rate header")
+                return
+            try:
+                sample_rate_hz = int(sample_rate_raw)
+            except ValueError:
+                self._send_text(HTTPStatus.BAD_REQUEST, "invalid sample rate")
+                return
+            if sample_rate_hz <= 0 or sample_rate_hz > 96000:
+                self._send_text(HTTPStatus.BAD_REQUEST, "invalid sample rate")
+                return
+
+            pcm_bytes = self._read_raw_body(max_bytes=VOICE_STT_MAX_PCM_BYTES)
+            if pcm_bytes is None:
+                return
+            if not pcm_bytes:
+                self._send_text(HTTPStatus.BAD_REQUEST, "empty audio payload")
+                return
+
+            if state.voice_stt_handler is None:
+                self._send_text(HTTPStatus.SERVICE_UNAVAILABLE, "voice stt disabled")
+                return
+
+            try:
+                transcript = state.voice_stt_handler(pcm_bytes, sample_rate_hz)
+            except Exception as exc:
+                message = sanitize_voice_payload(str(exc))
+                if message == "wake phrase not detected":
+                    self._send_text(HTTPStatus.UNPROCESSABLE_ENTITY, message)
+                    return
+                logging.warning("voice stt http request failed: %s", exc)
+                self._send_text(
+                    HTTPStatus.BAD_GATEWAY,
+                    message or "voice transcription failed",
+                )
+                return
+
+            self._send_text(HTTPStatus.OK, sanitize_voice_payload(transcript))
+
+        def _is_post_request_authorized(self) -> bool:
+            if not is_post_origin_allowed(
+                self.headers.get("Origin"),
+                self.headers.get("Host"),
+                state.cors_origin,
+            ):
+                self._send_json(HTTPStatus.FORBIDDEN, {"error": "Origin not allowed"})
+                return False
+
+            provided_key = normalize_api_key(self.headers.get("X-Zclaw-Key"))
+            if not is_request_authorized(provided_key, state.api_key):
+                self._send_json(HTTPStatus.UNAUTHORIZED, {"error": "Unauthorized"})
+                return False
+            return True
+
+        def _read_raw_body(self, max_bytes: int) -> bytes | None:
+            length_header = self.headers.get("Content-Length")
+            if not length_header:
+                self._send_text(HTTPStatus.BAD_REQUEST, "content-length required")
+                return None
+
+            try:
+                length = int(length_header)
+            except ValueError:
+                self._send_text(HTTPStatus.BAD_REQUEST, "invalid content-length")
+                return None
+
+            if length <= 0 or length > max_bytes:
+                self._send_text(HTTPStatus.BAD_REQUEST, "invalid body size")
+                return None
+
+            return self.rfile.read(length)
 
         def _read_json(self) -> dict | None:
             length_header = self.headers.get("Content-Length")
@@ -988,6 +1140,14 @@ def make_handler(state: AppState):
             encoded = json.dumps(payload, separators=(",", ":")).encode("utf-8")
             self.send_response(status.value)
             self._set_common_headers("application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def _send_text(self, status: HTTPStatus, text: str) -> None:
+            encoded = text.encode("utf-8")
+            self.send_response(status.value)
+            self._set_common_headers("text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(encoded)))
             self.end_headers()
             self.wfile.write(encoded)
@@ -1499,6 +1659,14 @@ def parse_args() -> argparse.Namespace:
         help="Log serial traffic at INFO level",
     )
     parser.add_argument(
+        "--voice-wake-phrase",
+        default=None,
+        help=(
+            "Optional phrase that must appear in STT transcript to forward voice input "
+            "(or set ZCLAW_VOICE_WAKE_PHRASE)."
+        ),
+    )
+    parser.add_argument(
         "--log-file",
         default=None,
         help="Optional path for an additional log file sink",
@@ -1513,7 +1681,10 @@ def run_server(args: argparse.Namespace) -> int:
     validate_bind_security(args.host, api_key)
     bridge, bridge_target = create_agent_bridge(args)
     bridge.open()
-    voice_stt_enabled = isinstance(bridge, SerialAgentBridge) and bridge.voice_stt_enabled
+    voice_stt_handler: Callable[[bytes, int], str] | None = None
+    if isinstance(bridge, SerialAgentBridge) and bridge.voice_stt_enabled:
+        voice_stt_handler = bridge.process_voice_pcm
+    voice_stt_enabled = voice_stt_handler is not None
 
     state = AppState(
         bridge=bridge,
@@ -1521,6 +1692,7 @@ def run_server(args: argparse.Namespace) -> int:
         api_key=api_key,
         cors_origin=cors_origin,
         voice_stt_enabled=voice_stt_enabled,
+        voice_stt_handler=voice_stt_handler,
     )
     handler = make_handler(state)
     httpd = ThreadingHTTPServer((args.host, args.port), handler)
@@ -1533,6 +1705,8 @@ def run_server(args: argparse.Namespace) -> int:
         "set" if api_key else "unset",
         "enabled" if voice_stt_enabled else "disabled",
     )
+    if isinstance(bridge, SerialAgentBridge) and bridge.voice_wake_phrase:
+        logging.info("Voice wake phrase gate enabled: %s", bridge.voice_wake_phrase)
     if cors_origin:
         logging.info("CORS enabled for origin: %s", cors_origin)
     else:

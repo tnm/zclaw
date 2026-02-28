@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import sys
+import threading
 import unittest
 from pathlib import Path
 
@@ -14,6 +16,7 @@ PROJECT_ROOT = TEST_DIR.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from web_relay import (  # noqa: E402
+    AppState,
     MockAgentBridge,
     SerialAgentBridge,
     VOICE_STT_RESP_PREFIX,
@@ -28,11 +31,13 @@ from web_relay import (  # noqa: E402
     is_probable_serial_exception,
     is_probable_esp_log_line,
     is_request_authorized,
+    make_handler,
     normalize_api_key,
     normalize_origin,
     pcm16le_to_wav_bytes,
     resolve_serial_port,
     sanitize_voice_payload,
+    transcribe_voice_pcm,
     validate_bind_security,
 )
 
@@ -301,6 +306,174 @@ class WebRelayTests(unittest.TestCase):
         self.assertIn(f"{VOICE_STT_RESP_PREFIX}err:", outbound)
         self.assertIn("chunk without begin", outbound)
 
+    def test_serial_bridge_rejects_voice_without_wake_phrase(self) -> None:
+        class FakeSerial:
+            def __init__(self) -> None:
+                self.writes: list[bytes] = []
+
+            def write(self, payload: bytes) -> int:
+                self.writes.append(payload)
+                return len(payload)
+
+            def flush(self) -> None:
+                return
+
+        bridge = SerialAgentBridge(
+            port="/dev/cu.usbmodem1101",
+            baudrate=115200,
+            serial_timeout_s=0.05,
+            response_timeout_s=0.2,
+            idle_timeout_s=0.02,
+            log_serial=False,
+            voice_transcriber=lambda pcm, sr: "turn on gpio five",
+            voice_wake_phrase="hey zclaw",
+        )
+        fake = FakeSerial()
+        bridge._serial = fake
+
+        chunk = base64.b64encode(b"\x01\x02\x03\x04").decode("ascii")
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:begin:16000"))
+        self.assertTrue(bridge._handle_voice_sideband_line(f"__zclaw_voice_stt_req__:chunk:{chunk}"))
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:end"))
+
+        outbound = b"".join(fake.writes).decode("utf-8")
+        self.assertIn(f"{VOICE_STT_RESP_PREFIX}err:", outbound)
+        self.assertIn("wake phrase not detected", outbound)
+
+    def test_serial_bridge_accepts_voice_with_wake_phrase(self) -> None:
+        class FakeSerial:
+            def __init__(self) -> None:
+                self.writes: list[bytes] = []
+
+            def write(self, payload: bytes) -> int:
+                self.writes.append(payload)
+                return len(payload)
+
+            def flush(self) -> None:
+                return
+
+        bridge = SerialAgentBridge(
+            port="/dev/cu.usbmodem1101",
+            baudrate=115200,
+            serial_timeout_s=0.05,
+            response_timeout_s=0.2,
+            idle_timeout_s=0.02,
+            log_serial=False,
+            voice_transcriber=lambda pcm, sr: "Hey, zclaw turn on gpio five",
+            voice_wake_phrase="hey zclaw",
+        )
+        fake = FakeSerial()
+        bridge._serial = fake
+
+        chunk = base64.b64encode(b"\x01\x02\x03\x04").decode("ascii")
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:begin:16000"))
+        self.assertTrue(bridge._handle_voice_sideband_line(f"__zclaw_voice_stt_req__:chunk:{chunk}"))
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:end"))
+
+        outbound = b"".join(fake.writes).decode("utf-8")
+        self.assertIn(f"{VOICE_STT_RESP_PREFIX}ok:", outbound)
+        self.assertIn("Hey, zclaw turn on gpio five", outbound)
+
+    def test_serial_bridge_accepts_split_word_wake_phrase(self) -> None:
+        class FakeSerial:
+            def __init__(self) -> None:
+                self.writes: list[bytes] = []
+
+            def write(self, payload: bytes) -> int:
+                self.writes.append(payload)
+                return len(payload)
+
+            def flush(self) -> None:
+                return
+
+        bridge = SerialAgentBridge(
+            port="/dev/cu.usbmodem1101",
+            baudrate=115200,
+            serial_timeout_s=0.05,
+            response_timeout_s=0.2,
+            idle_timeout_s=0.02,
+            log_serial=False,
+            voice_transcriber=lambda pcm, sr: "z claw turn on gpio five",
+            voice_wake_phrase="zclaw",
+        )
+        fake = FakeSerial()
+        bridge._serial = fake
+
+        chunk = base64.b64encode(b"\x01\x02\x03\x04").decode("ascii")
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:begin:16000"))
+        self.assertTrue(bridge._handle_voice_sideband_line(f"__zclaw_voice_stt_req__:chunk:{chunk}"))
+        self.assertTrue(bridge._handle_voice_sideband_line("__zclaw_voice_stt_req__:end"))
+
+        outbound = b"".join(fake.writes).decode("utf-8")
+        self.assertIn(f"{VOICE_STT_RESP_PREFIX}ok:", outbound)
+        self.assertIn("z claw turn on gpio five", outbound)
+
+    def test_transcribe_voice_pcm_wake_phrase_miss(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            transcribe_voice_pcm(
+                pcm_bytes=b"\x01\x02\x03\x04",
+                sample_rate_hz=16000,
+                voice_transcriber=lambda pcm, sr: "turn on gpio five",
+                voice_wake_phrase="zclaw",
+            )
+        self.assertIn("wake phrase not detected", str(ctx.exception))
+
+    def test_transcribe_voice_pcm_accepts_split_phrase(self) -> None:
+        transcript = transcribe_voice_pcm(
+            pcm_bytes=b"\x01\x02\x03\x04",
+            sample_rate_hz=16000,
+            voice_transcriber=lambda pcm, sr: "z claw turn on gpio five",
+            voice_wake_phrase="zclaw",
+        )
+        self.assertEqual(transcript, "z claw turn on gpio five")
+
+    def test_voice_stt_http_endpoint_success(self) -> None:
+        state = AppState(
+            bridge=MockAgentBridge(latency_s=0.0),
+            bridge_target="mock-agent",
+            api_key=None,
+            cors_origin=None,
+            voice_stt_enabled=True,
+            voice_stt_handler=lambda pcm, sr: f"len={len(pcm)} sr={sr}",
+        )
+        status, body = self._post_voice_stt(
+            state,
+            pcm=b"\x01\x02\x03\x04",
+            headers={"X-Zclaw-Sample-Rate": "16000"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(body, "len=4 sr=16000")
+
+    def test_voice_stt_http_endpoint_requires_sample_rate(self) -> None:
+        state = AppState(
+            bridge=MockAgentBridge(latency_s=0.0),
+            bridge_target="mock-agent",
+            api_key=None,
+            cors_origin=None,
+            voice_stt_enabled=True,
+            voice_stt_handler=lambda pcm, sr: "ok",
+        )
+        status, body = self._post_voice_stt(state, pcm=b"\x01\x02", headers={})
+        self.assertEqual(status, 400)
+        self.assertIn("sample rate", body.lower())
+
+    def test_voice_stt_http_endpoint_requires_auth_when_configured(self) -> None:
+        state = AppState(
+            bridge=MockAgentBridge(latency_s=0.0),
+            bridge_target="mock-agent",
+            api_key="secret",
+            cors_origin=None,
+            voice_stt_enabled=True,
+            voice_stt_handler=lambda pcm, sr: "ok",
+        )
+        status, body = self._post_voice_stt(
+            state,
+            pcm=b"\x01\x02",
+            headers={"X-Zclaw-Sample-Rate": "16000"},
+        )
+        self.assertEqual(status, 401)
+        self.assertIn("unauthorized", body.lower())
+
     def test_mock_bridge_commands(self) -> None:
         bridge = MockAgentBridge(latency_s=0.0)
         self.assertEqual(bridge.ask("ping"), "pong")
@@ -324,6 +497,37 @@ class WebRelayTests(unittest.TestCase):
 
     def test_resolve_serial_port_returns_explicit(self) -> None:
         self.assertEqual(resolve_serial_port("/dev/ttyTEST0"), "/dev/ttyTEST0")
+
+    def _post_voice_stt(
+        self,
+        state: AppState,
+        pcm: bytes,
+        headers: dict[str, str],
+    ) -> tuple[int, str]:
+        from http.server import ThreadingHTTPServer
+
+        try:
+            httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(state))
+        except PermissionError as exc:
+            raise unittest.SkipTest("sandbox disallows binding local test server") from exc
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            host, port = httpd.server_address
+            conn = http.client.HTTPConnection(host, port, timeout=3.0)
+            req_headers = {
+                "Content-Length": str(len(pcm)),
+                **headers,
+            }
+            conn.request("POST", "/api/voice/stt", body=pcm, headers=req_headers)
+            resp = conn.getresponse()
+            body = resp.read().decode("utf-8", errors="replace")
+            conn.close()
+            return resp.status, body
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=1.0)
 
 
 if __name__ == "__main__":

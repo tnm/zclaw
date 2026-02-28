@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -20,6 +21,8 @@ TELEGRAM_CLEAR_SH = PROJECT_ROOT / "scripts" / "telegram-clear-backlog.sh"
 ERASE_SH = PROJECT_ROOT / "scripts" / "erase.sh"
 BUILD_SH = PROJECT_ROOT / "scripts" / "build.sh"
 FLASH_SH = PROJECT_ROOT / "scripts" / "flash.sh"
+S3_VOICE_DEFAULTS = PROJECT_ROOT / "sdkconfig.esp32s3-voice.defaults"
+S3_SENSE_VOICE_DEFAULTS = PROJECT_ROOT / "sdkconfig.esp32s3-sense-voice.defaults"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -29,6 +32,19 @@ def _write_executable(path: Path, content: str) -> None:
 
 
 class InstallProvisionScriptTests(unittest.TestCase):
+    def _backup_optional_file(self, path: Path) -> tuple[bool, bytes]:
+        if path.exists():
+            return True, path.read_bytes()
+        return False, b""
+
+    def _restore_optional_file(self, path: Path, existed: bool, content: bytes) -> None:
+        if existed:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            return
+        if path.exists():
+            path.unlink()
+
     def _prepare_fake_idf_env(self, tmp: Path) -> tuple[dict[str, str], Path]:
         home = tmp / "home"
         export_dir = home / "esp" / "esp-idf"
@@ -81,6 +97,93 @@ class InstallProvisionScriptTests(unittest.TestCase):
                 check=False,
             )
 
+    def _run_install_flash_with_chip(
+        self,
+        chip_name: str,
+        extra_args: list[str],
+    ) -> tuple[subprocess.CompletedProcess[str], str]:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            project_dir = tmp / "project"
+            project_dir.mkdir(parents=True, exist_ok=True)
+
+            install_copy = project_dir / "install.sh"
+            shutil.copy2(INSTALL_SH, install_copy)
+            install_copy.chmod(install_copy.stat().st_mode | stat.S_IXUSR)
+            (project_dir / "VERSION").write_text("dev\n", encoding="utf-8")
+
+            scripts_dir = project_dir / "scripts"
+            scripts_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                scripts_dir / "flash.sh",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$FLASH_ARGS_FILE\"\n",
+            )
+            _write_executable(
+                scripts_dir / "flash-secure.sh",
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$FLASH_ARGS_FILE\"\n",
+            )
+
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            fake_port = tmp / "ttyUSB0"
+            fake_port.touch()
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                f"printf '%s\\n' 'Chip is {chip_name} (QFN56)'\n",
+            )
+
+            flash_args_file = tmp / "flash-args.txt"
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["XDG_CONFIG_HOME"] = str(home / ".config")
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["FLASH_ARGS_FILE"] = str(flash_args_file)
+
+            cmd = [
+                str(install_copy),
+                "--yes",
+                "--no-install-idf",
+                "--no-repair-idf",
+                "--no-qemu",
+                "--no-cjson",
+                "--build",
+                "--flash",
+                "--no-provision",
+                "--no-monitor",
+                "--port",
+                str(fake_port),
+                *extra_args,
+            ]
+            proc = subprocess.run(
+                cmd,
+                cwd=project_dir,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            flash_args = flash_args_file.read_text(encoding="utf-8") if flash_args_file.exists() else ""
+            return proc, flash_args
+
     def test_install_auto_applies_saved_qemu_choice(self) -> None:
         prefs = """# zclaw install.sh preferences
 INSTALL_IDF=n
@@ -119,6 +222,56 @@ LAST_PORT=
         self.assertEqual(proc.returncode, 0, msg=output)
         self.assertIn("Install QEMU for ESP32 emulation?: no", output)
         self.assertNotIn("Install QEMU for ESP32 emulation?: no (saved)", output)
+
+    def test_install_s3_auto_enables_voice_preset_for_flash(self) -> None:
+        proc, flash_args = self._run_install_flash_with_chip("ESP32-S3", [])
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Detected board chip: ESP32-S3", output)
+        self.assertIn("Will use board preset: esp32s3-voice", output)
+        self.assertIn("--board", flash_args)
+        self.assertIn("esp32s3-voice", flash_args)
+
+    def test_install_no_voice_skips_s3_voice_preset_for_flash(self) -> None:
+        proc, flash_args = self._run_install_flash_with_chip("ESP32-S3", ["--no-voice"])
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Detected board chip: ESP32-S3", output)
+        self.assertIn("Voice pipeline disabled for this run", output)
+        self.assertNotIn("esp32s3-voice", flash_args)
+
+    def test_install_voice_flag_on_non_s3_does_not_force_voice_preset(self) -> None:
+        proc, flash_args = self._run_install_flash_with_chip("ESP32-C3", ["--voice"])
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Detected board chip: ESP32-C3", output)
+        self.assertIn("voice preset only applies to ESP32-S3", output)
+        self.assertNotIn("esp32s3-voice", flash_args)
+
+    def test_install_forwards_voice_i2s_overrides_to_flash_script(self) -> None:
+        proc, flash_args = self._run_install_flash_with_chip(
+            "ESP32-S3",
+            [
+                "--voice-i2s-port",
+                "0",
+                "--voice-i2s-bclk",
+                "9",
+                "--voice-i2s-ws",
+                "45",
+                "--voice-i2s-din",
+                "8",
+            ],
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("--voice-i2s-port", flash_args)
+        self.assertIn("0", flash_args)
+        self.assertIn("--voice-i2s-bclk", flash_args)
+        self.assertIn("9", flash_args)
+        self.assertIn("--voice-i2s-ws", flash_args)
+        self.assertIn("45", flash_args)
+        self.assertIn("--voice-i2s-din", flash_args)
+        self.assertIn("8", flash_args)
 
     def test_build_box3_passes_expected_idf_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -178,6 +331,117 @@ LAST_PORT=
             self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-voice.defaults", args_text)
             self.assertIn("build", args_text)
 
+    def test_build_s3_voice_with_i2s_overrides_adds_voice_defaults_file(self) -> None:
+        voice_defaults = PROJECT_ROOT / "build" / "sdkconfig.voice-overrides.defaults"
+        existed, content = self._backup_optional_file(voice_defaults)
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                env, bin_dir = self._prepare_fake_idf_env(tmp)
+                args_file = tmp / "idf-args.txt"
+                env["IDF_ARGS_FILE"] = str(args_file)
+
+                _write_executable(
+                    bin_dir / "idf.py",
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                )
+
+                proc = subprocess.run(
+                    [
+                        str(BUILD_SH),
+                        "--s3-voice",
+                        "--voice-i2s-port",
+                        "1",
+                        "--voice-i2s-bclk",
+                        "9",
+                        "--voice-i2s-ws",
+                        "45",
+                        "--voice-i2s-din",
+                        "8",
+                    ],
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                output = f"{proc.stdout}\n{proc.stderr}"
+                self.assertEqual(proc.returncode, 0, msg=output)
+                args_text = args_file.read_text(encoding="utf-8")
+                self.assertIn(
+                    "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-voice.defaults;build/sdkconfig.voice-overrides.defaults",
+                    args_text,
+                )
+
+                voice_text = voice_defaults.read_text(encoding="utf-8")
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_PORT=1", voice_text)
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=9", voice_text)
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=45", voice_text)
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=8", voice_text)
+        finally:
+            self._restore_optional_file(voice_defaults, existed, content)
+
+    def test_build_s3_voice_with_i2s_overrides_updates_existing_sdkconfig_file(self) -> None:
+        voice_defaults = PROJECT_ROOT / "build" / "sdkconfig.voice-overrides.defaults"
+        preset_sdkconfig = PROJECT_ROOT / "build" / "sdkconfig.esp32s3-voice"
+        defaults_existed, defaults_content = self._backup_optional_file(voice_defaults)
+        sdkcfg_existed, sdkcfg_content = self._backup_optional_file(preset_sdkconfig)
+        try:
+            preset_sdkconfig.parent.mkdir(parents=True, exist_ok=True)
+            preset_sdkconfig.write_text(
+                "CONFIG_ZCLAW_VOICE_I2S_PORT=0\n"
+                "CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=-1\n"
+                "CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=-1\n"
+                "CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=-1\n",
+                encoding="utf-8",
+            )
+
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                env, bin_dir = self._prepare_fake_idf_env(tmp)
+                args_file = tmp / "idf-args.txt"
+                env["IDF_ARGS_FILE"] = str(args_file)
+
+                _write_executable(
+                    bin_dir / "idf.py",
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                )
+
+                proc = subprocess.run(
+                    [
+                        str(BUILD_SH),
+                        "--s3-voice",
+                        "--voice-i2s-port",
+                        "1",
+                        "--voice-i2s-bclk",
+                        "9",
+                        "--voice-i2s-ws",
+                        "45",
+                        "--voice-i2s-din",
+                        "8",
+                    ],
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                output = f"{proc.stdout}\n{proc.stderr}"
+                self.assertEqual(proc.returncode, 0, msg=output)
+
+            updated = preset_sdkconfig.read_text(encoding="utf-8")
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_PORT=1", updated)
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=9", updated)
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=45", updated)
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=8", updated)
+        finally:
+            self._restore_optional_file(voice_defaults, defaults_existed, defaults_content)
+            self._restore_optional_file(preset_sdkconfig, sdkcfg_existed, sdkcfg_content)
+
     def test_build_s3_sense_voice_passes_expected_idf_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -209,6 +473,44 @@ LAST_PORT=
                 args_text,
             )
             self.assertIn("build", args_text)
+
+    def test_s3_voice_defaults_select_std_i2s_capture_mode(self) -> None:
+        defaults_text = S3_VOICE_DEFAULTS.read_text(encoding="utf-8")
+        self.assertIn("CONFIG_ZCLAW_VOICE_CAPTURE_STD_I2S=y", defaults_text)
+        self.assertIn("CONFIG_SPIRAM=y", defaults_text)
+        self.assertIn("CONFIG_SPIRAM_IGNORE_NOTFOUND=y", defaults_text)
+
+    def test_s3_sense_voice_defaults_enable_pdm_onboard_mic(self) -> None:
+        defaults_text = S3_SENSE_VOICE_DEFAULTS.read_text(encoding="utf-8")
+        self.assertIn("CONFIG_ZCLAW_VOICE_CAPTURE_PDM=y", defaults_text)
+        self.assertIn("CONFIG_ZCLAW_VOICE_PDM_CLK_GPIO=42", defaults_text)
+        self.assertIn("CONFIG_ZCLAW_VOICE_PDM_DIN_GPIO=41", defaults_text)
+        self.assertIn("CONFIG_SPIRAM=y", defaults_text)
+        self.assertIn("CONFIG_SPIRAM_MODE_OCT=y", defaults_text)
+        self.assertIn("CONFIG_SPIRAM_IGNORE_NOTFOUND=y", defaults_text)
+
+    def test_build_voice_i2s_override_rejects_out_of_range_gpio(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "exit 0\n",
+            )
+
+            proc = subprocess.run(
+                [str(BUILD_SH), "--s3-voice", "--voice-i2s-bclk", "99"],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertNotEqual(proc.returncode, 0, msg=output)
+            self.assertIn("--voice-i2s-bclk out of range", output)
 
     def test_flash_box3_passes_expected_idf_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -312,6 +614,162 @@ LAST_PORT=
             self.assertIn(str(fake_port), args_text)
             self.assertIn("flash", args_text)
 
+    def test_flash_s3_voice_with_i2s_overrides_adds_voice_defaults_file(self) -> None:
+        voice_defaults = PROJECT_ROOT / "build" / "sdkconfig.voice-overrides.defaults"
+        existed, content = self._backup_optional_file(voice_defaults)
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                env, bin_dir = self._prepare_fake_idf_env(tmp)
+                fake_port = tmp / "ttyUSB0"
+                fake_port.touch()
+                args_file = tmp / "idf-args.txt"
+                env["IDF_ARGS_FILE"] = str(args_file)
+
+                _write_executable(
+                    bin_dir / "idf.py",
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                )
+                _write_executable(
+                    bin_dir / "lsof",
+                    "#!/bin/sh\n"
+                    "exit 1\n",
+                )
+                _write_executable(
+                    bin_dir / "esptool.py",
+                    "#!/bin/sh\n"
+                    "cat <<'EOF'\n"
+                    "Chip is ESP32-S3 (QFN56)\n"
+                    "MAC: AA:BB:CC:DD:EE:FF\n"
+                    "EOF\n",
+                )
+                _write_executable(
+                    bin_dir / "espefuse.py",
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+                )
+
+                proc = subprocess.run(
+                    [
+                        str(FLASH_SH),
+                        "--s3-voice",
+                        "--voice-i2s-port",
+                        "1",
+                        "--voice-i2s-bclk",
+                        "9",
+                        "--voice-i2s-ws",
+                        "45",
+                        "--voice-i2s-din",
+                        "8",
+                        str(fake_port),
+                    ],
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                output = f"{proc.stdout}\n{proc.stderr}"
+                self.assertEqual(proc.returncode, 0, msg=output)
+                args_text = args_file.read_text(encoding="utf-8")
+                self.assertIn(
+                    "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-voice.defaults;build/sdkconfig.voice-overrides.defaults",
+                    args_text,
+                )
+                self.assertIn("-p", args_text)
+                self.assertIn(str(fake_port), args_text)
+                self.assertIn("flash", args_text)
+
+                voice_text = voice_defaults.read_text(encoding="utf-8")
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_PORT=1", voice_text)
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=9", voice_text)
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=45", voice_text)
+                self.assertIn("CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=8", voice_text)
+        finally:
+            self._restore_optional_file(voice_defaults, existed, content)
+
+    def test_flash_s3_voice_with_i2s_overrides_updates_existing_sdkconfig_file(self) -> None:
+        voice_defaults = PROJECT_ROOT / "build" / "sdkconfig.voice-overrides.defaults"
+        preset_sdkconfig = PROJECT_ROOT / "build" / "sdkconfig.esp32s3-voice"
+        defaults_existed, defaults_content = self._backup_optional_file(voice_defaults)
+        sdkcfg_existed, sdkcfg_content = self._backup_optional_file(preset_sdkconfig)
+        try:
+            preset_sdkconfig.parent.mkdir(parents=True, exist_ok=True)
+            preset_sdkconfig.write_text(
+                "CONFIG_ZCLAW_VOICE_I2S_PORT=0\n"
+                "CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=-1\n"
+                "CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=-1\n"
+                "CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=-1\n",
+                encoding="utf-8",
+            )
+
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                env, bin_dir = self._prepare_fake_idf_env(tmp)
+                fake_port = tmp / "ttyUSB0"
+                fake_port.touch()
+                args_file = tmp / "idf-args.txt"
+                env["IDF_ARGS_FILE"] = str(args_file)
+
+                _write_executable(
+                    bin_dir / "idf.py",
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                )
+                _write_executable(
+                    bin_dir / "lsof",
+                    "#!/bin/sh\n"
+                    "exit 1\n",
+                )
+                _write_executable(
+                    bin_dir / "esptool.py",
+                    "#!/bin/sh\n"
+                    "cat <<'EOF'\n"
+                    "Chip is ESP32-S3 (QFN56)\n"
+                    "MAC: AA:BB:CC:DD:EE:FF\n"
+                    "EOF\n",
+                )
+                _write_executable(
+                    bin_dir / "espefuse.py",
+                    "#!/bin/sh\n"
+                    "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+                )
+
+                proc = subprocess.run(
+                    [
+                        str(FLASH_SH),
+                        "--s3-voice",
+                        "--voice-i2s-port",
+                        "1",
+                        "--voice-i2s-bclk",
+                        "9",
+                        "--voice-i2s-ws",
+                        "45",
+                        "--voice-i2s-din",
+                        "8",
+                        str(fake_port),
+                    ],
+                    cwd=PROJECT_ROOT,
+                    env=env,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+
+                output = f"{proc.stdout}\n{proc.stderr}"
+                self.assertEqual(proc.returncode, 0, msg=output)
+
+            updated = preset_sdkconfig.read_text(encoding="utf-8")
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_PORT=1", updated)
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_BCLK_GPIO=9", updated)
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_WS_GPIO=45", updated)
+            self.assertIn("CONFIG_ZCLAW_VOICE_I2S_DIN_GPIO=8", updated)
+        finally:
+            self._restore_optional_file(voice_defaults, defaults_existed, defaults_content)
+            self._restore_optional_file(preset_sdkconfig, sdkcfg_existed, sdkcfg_content)
+
     def test_flash_s3_sense_voice_passes_expected_idf_overrides(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -397,6 +855,29 @@ LAST_PORT=
             self.assertNotEqual(proc.returncode, 0, msg=output)
             self.assertIn("requires target 'esp32s3'", output)
             self.assertIn("ESP32-C3", output)
+
+    def test_flash_voice_i2s_override_rejects_out_of_range_gpio(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env, bin_dir = self._prepare_fake_idf_env(tmp)
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "exit 0\n",
+            )
+
+            proc = subprocess.run(
+                [str(FLASH_SH), "--s3-voice", "--voice-i2s-bclk", "99"],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertNotEqual(proc.returncode, 0, msg=output)
+            self.assertIn("--voice-i2s-bclk out of range", output)
 
     def _run_provision_detect(self, env_ssid: str, nmcli_output: str) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:

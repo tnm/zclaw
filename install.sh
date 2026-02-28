@@ -48,6 +48,7 @@ PREF_FLASH_MODE=""
 PREF_PROVISION_NOW=""
 PREF_MONITOR_AFTER_FLASH=""
 PREF_LAST_PORT=""
+PREF_ENABLE_S3_VOICE=""
 
 # CLI overrides
 ASSUME_YES=false
@@ -62,6 +63,11 @@ FORCE_PROVISION=""
 FORCE_MONITOR=""
 FORCE_PORT=""
 FORCE_KILL_MONITOR=""
+FORCE_ENABLE_S3_VOICE=""
+FORCE_VOICE_I2S_PORT=""
+FORCE_VOICE_I2S_BCLK=""
+FORCE_VOICE_I2S_WS=""
+FORCE_VOICE_I2S_DIN=""
 
 print_banner() {
     echo ""
@@ -114,6 +120,11 @@ Options:
   --monitor / --no-monitor              Open serial monitor after standard flash
   --port <serial-port>                  Use this serial port for flash/monitor
   --kill-monitor / --no-kill-monitor    Auto-stop stale ESP-IDF monitor before flash
+  --voice / --no-voice                  Enable/disable optional ESP32-S3 voice preset at flash time
+  --voice-i2s-port <0|1>                Override voice I2S controller index
+  --voice-i2s-bclk <-1..48>             Override voice I2S BCLK GPIO
+  --voice-i2s-ws <-1..48>               Override voice I2S WS/LRCLK GPIO
+  --voice-i2s-din <-1..48>              Override voice I2S DIN GPIO
   --qemu / --no-qemu                    Install optional QEMU dependency
   --cjson / --no-cjson                  Install optional cJSON dependency
   --install-idf / --no-install-idf      Install ESP-IDF if missing
@@ -172,6 +183,7 @@ get_preference() {
         PROVISION_NOW) echo "$PREF_PROVISION_NOW" ;;
         MONITOR_AFTER_FLASH) echo "$PREF_MONITOR_AFTER_FLASH" ;;
         LAST_PORT) echo "$PREF_LAST_PORT" ;;
+        ENABLE_S3_VOICE) echo "$PREF_ENABLE_S3_VOICE" ;;
         *) echo "" ;;
     esac
 }
@@ -225,6 +237,10 @@ set_preference() {
             [ "$PREF_LAST_PORT" = "$value" ] && return 0
             PREF_LAST_PORT="$value"
             ;;
+        ENABLE_S3_VOICE)
+            [ "$PREF_ENABLE_S3_VOICE" = "$value" ] && return 0
+            PREF_ENABLE_S3_VOICE="$value"
+            ;;
         *)
             return 1
             ;;
@@ -249,7 +265,7 @@ load_preferences() {
         value="${value%$'\r'}"
 
         case "$key" in
-            INSTALL_IDF|REPAIR_IDF|INSTALL_QEMU|INSTALL_CJSON|BUILD_NOW|REPAIR_BUILD_IDF|FLASH_NOW|PROVISION_NOW|MONITOR_AFTER_FLASH)
+            INSTALL_IDF|REPAIR_IDF|INSTALL_QEMU|INSTALL_CJSON|BUILD_NOW|REPAIR_BUILD_IDF|FLASH_NOW|PROVISION_NOW|MONITOR_AFTER_FLASH|ENABLE_S3_VOICE)
                 normalized="$(normalize_yes_no "$value")"
                 [ -n "$normalized" ] && set_preference "$key" "$normalized"
                 ;;
@@ -298,6 +314,7 @@ FLASH_MODE=$PREF_FLASH_MODE
 PROVISION_NOW=$PREF_PROVISION_NOW
 MONITOR_AFTER_FLASH=$PREF_MONITOR_AFTER_FLASH
 LAST_PORT=$PREF_LAST_PORT
+ENABLE_S3_VOICE=$PREF_ENABLE_S3_VOICE
 EOF
     then
         rm -f "$tmp_file"
@@ -357,6 +374,40 @@ parse_args() {
                 ;;
             --kill-monitor) FORCE_KILL_MONITOR="y" ;;
             --no-kill-monitor) FORCE_KILL_MONITOR="n" ;;
+            --voice) FORCE_ENABLE_S3_VOICE="y" ;;
+            --no-voice) FORCE_ENABLE_S3_VOICE="n" ;;
+            --voice-i2s-port)
+                shift
+                [ $# -gt 0 ] || { print_error "--voice-i2s-port requires a value"; exit 1; }
+                FORCE_VOICE_I2S_PORT="$1"
+                ;;
+            --voice-i2s-port=*)
+                FORCE_VOICE_I2S_PORT="${1#*=}"
+                ;;
+            --voice-i2s-bclk)
+                shift
+                [ $# -gt 0 ] || { print_error "--voice-i2s-bclk requires a value"; exit 1; }
+                FORCE_VOICE_I2S_BCLK="$1"
+                ;;
+            --voice-i2s-bclk=*)
+                FORCE_VOICE_I2S_BCLK="${1#*=}"
+                ;;
+            --voice-i2s-ws)
+                shift
+                [ $# -gt 0 ] || { print_error "--voice-i2s-ws requires a value"; exit 1; }
+                FORCE_VOICE_I2S_WS="$1"
+                ;;
+            --voice-i2s-ws=*)
+                FORCE_VOICE_I2S_WS="${1#*=}"
+                ;;
+            --voice-i2s-din)
+                shift
+                [ $# -gt 0 ] || { print_error "--voice-i2s-din requires a value"; exit 1; }
+                FORCE_VOICE_I2S_DIN="$1"
+                ;;
+            --voice-i2s-din=*)
+                FORCE_VOICE_I2S_DIN="${1#*=}"
+                ;;
             --qemu) FORCE_INSTALL_QEMU="y" ;;
             --no-qemu) FORCE_INSTALL_QEMU="n" ;;
             --cjson) FORCE_INSTALL_CJSON="y" ;;
@@ -495,6 +546,42 @@ detect_os() {
     esac
 }
 
+detect_chip_name() {
+    local port="$1"
+    local chip_info=""
+    local chip_name=""
+
+    if [ -f "$ESP_IDF_DIR/export.sh" ]; then
+        chip_info="$(bash -c "source '$ESP_IDF_DIR/export.sh' >/dev/null 2>&1 && esptool.py --port '$port' chip_id" 2>/dev/null || true)"
+    elif command -v esptool.py >/dev/null 2>&1; then
+        chip_info="$(esptool.py --port "$port" chip_id 2>/dev/null || true)"
+    fi
+
+    chip_name="$(echo "$chip_info" | sed -nE 's/.*Chip is ([^,(]+).*/\1/p' | head -1 | xargs)"
+    if [ -n "$chip_name" ]; then
+        echo "$chip_name"
+        return
+    fi
+
+    chip_name="$(echo "$chip_info" | sed -nE 's/.*Detecting chip type\.\.\. ([A-Za-z0-9-]+).*/\1/p' | head -1 | xargs)"
+    echo "$chip_name"
+}
+
+chip_name_to_target() {
+    local chip_name="$1"
+    case "$chip_name" in
+        "ESP32-S2"*) echo "esp32s2" ;;
+        "ESP32-S3"*) echo "esp32s3" ;;
+        "ESP32-C2"*) echo "esp32c2" ;;
+        "ESP32-C3"*) echo "esp32c3" ;;
+        "ESP32-C6"*) echo "esp32c6" ;;
+        "ESP32-H2"*) echo "esp32h2" ;;
+        "ESP32-P4"*) echo "esp32p4" ;;
+        "ESP32"*) echo "esp32" ;;
+        *) echo "" ;;
+    esac
+}
+
 idf_export_works() {
     local export_script="$1"
     local py_bin py_dir check_path
@@ -578,6 +665,7 @@ echo -e "  ${GREEN}•${NC} ESP-IDF $ESP_IDF_VERSION ${DIM}(required for buildin
 echo -e "  ${GREEN}•${NC} QEMU ${DIM}(optional, for emulation)${NC}"
 echo -e "  ${GREEN}•${NC} cJSON ${DIM}(optional, for host tests)${NC}"
 echo -e "  ${GREEN}•${NC} Flash helpers with serial + board-chip detection"
+echo -e "  ${GREEN}•${NC} Optional ESP32-S3 voice preset prompt during flash"
 echo ""
 
 OS=$(detect_os)
@@ -758,6 +846,7 @@ FLASH_REQUESTED=false
 FLASH_SUCCESS=false
 PROVISION_REQUESTED=false
 PROVISION_SUCCESS=false
+FLASH_BOARD_PRESET=""
 if [ -f "$ESP_IDF_DIR/export.sh" ]; then
     if ask_yes_no "Build the firmware now?" "y" "BUILD_NOW" "$FORCE_BUILD"; then
         BUILD_REQUESTED=true
@@ -877,6 +966,34 @@ if [ "$BUILD_SUCCESS" = true ]; then
             fi
         fi
 
+        if [ -n "$FLASH_PORT" ]; then
+            CHIP_NAME="$(detect_chip_name "$FLASH_PORT")"
+            if [ -n "$CHIP_NAME" ]; then
+                CHIP_TARGET="$(chip_name_to_target "$CHIP_NAME")"
+                print_status "Detected board chip: $CHIP_NAME"
+
+                if [ "$CHIP_TARGET" = "esp32s3" ]; then
+                    if ask_yes_no "Enable optional voice pipeline on this ESP32-S3 board?" "y" "ENABLE_S3_VOICE" "$FORCE_ENABLE_S3_VOICE" "true"; then
+                        FLASH_BOARD_PRESET="esp32s3-voice"
+                        print_status "Will use board preset: $FLASH_BOARD_PRESET"
+                    else
+                        FLASH_BOARD_PRESET=""
+                        print_status "Voice pipeline disabled for this run"
+                    fi
+                    echo ""
+                elif [ "$FORCE_ENABLE_S3_VOICE" = "y" ]; then
+                    print_warning "--voice requested, but detected chip is $CHIP_NAME (voice preset only applies to ESP32-S3)."
+                    echo ""
+                fi
+            else
+                print_warning "Could not detect chip type on $FLASH_PORT; skipping optional voice auto-check."
+                if [ "$FORCE_ENABLE_S3_VOICE" = "y" ]; then
+                    print_warning "--voice requested, but chip auto-detection failed; not forcing an ESP32-S3 preset."
+                fi
+                echo ""
+            fi
+        fi
+
         FLASH_MODE_CHOICE="1"
         if [ -n "$FORCE_FLASH_MODE" ]; then
             FLASH_MODE_CHOICE="$FORCE_FLASH_MODE"
@@ -901,6 +1018,11 @@ if [ "$BUILD_SUCCESS" = true ]; then
 
             if [ "$FLASH_MODE_CHOICE" = "2" ]; then
                 flash_cmd=(./scripts/flash-secure.sh)
+                [ -n "$FLASH_BOARD_PRESET" ] && flash_cmd+=(--board "$FLASH_BOARD_PRESET")
+                [ -n "$FORCE_VOICE_I2S_PORT" ] && flash_cmd+=(--voice-i2s-port "$FORCE_VOICE_I2S_PORT")
+                [ -n "$FORCE_VOICE_I2S_BCLK" ] && flash_cmd+=(--voice-i2s-bclk "$FORCE_VOICE_I2S_BCLK")
+                [ -n "$FORCE_VOICE_I2S_WS" ] && flash_cmd+=(--voice-i2s-ws "$FORCE_VOICE_I2S_WS")
+                [ -n "$FORCE_VOICE_I2S_DIN" ] && flash_cmd+=(--voice-i2s-din "$FORCE_VOICE_I2S_DIN")
                 [ -n "$FLASH_PORT" ] && flash_cmd+=("$FLASH_PORT")
                 [ "$FORCE_KILL_MONITOR" = "y" ] && flash_cmd+=(--kill-monitor)
 
@@ -913,6 +1035,11 @@ if [ "$BUILD_SUCCESS" = true ]; then
                 fi
             else
                 flash_cmd=(./scripts/flash.sh)
+                [ -n "$FLASH_BOARD_PRESET" ] && flash_cmd+=(--board "$FLASH_BOARD_PRESET")
+                [ -n "$FORCE_VOICE_I2S_PORT" ] && flash_cmd+=(--voice-i2s-port "$FORCE_VOICE_I2S_PORT")
+                [ -n "$FORCE_VOICE_I2S_BCLK" ] && flash_cmd+=(--voice-i2s-bclk "$FORCE_VOICE_I2S_BCLK")
+                [ -n "$FORCE_VOICE_I2S_WS" ] && flash_cmd+=(--voice-i2s-ws "$FORCE_VOICE_I2S_WS")
+                [ -n "$FORCE_VOICE_I2S_DIN" ] && flash_cmd+=(--voice-i2s-din "$FORCE_VOICE_I2S_DIN")
                 [ -n "$FLASH_PORT" ] && flash_cmd+=("$FLASH_PORT")
                 [ "$FORCE_KILL_MONITOR" = "y" ] && flash_cmd+=(--kill-monitor)
 
@@ -1091,6 +1218,9 @@ echo -e "  ${YELLOW}./install.sh -y --build --flash --provision${NC}"
 echo -e "  ${YELLOW}./install.sh --flash --provision${NC}"
 echo -e "  ${YELLOW}./install.sh --port /dev/cu.usbmodem* --monitor${NC}"
 echo -e "  ${YELLOW}./install.sh --flash --kill-monitor${NC}"
+echo -e "  ${YELLOW}./install.sh --flash --voice${NC}"
+echo -e "  ${YELLOW}./install.sh --flash --voice --voice-i2s-bclk 9 --voice-i2s-ws 45 --voice-i2s-din 8${NC}"
+echo -e "  ${YELLOW}./scripts/flash.sh --s3-sense-voice /dev/ttyACM0${NC}"
 echo -e "  ${YELLOW}./install.sh --no-qemu --no-cjson${NC}"
 echo ""
 

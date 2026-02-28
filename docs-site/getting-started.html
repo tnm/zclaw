@@ -231,7 +231,13 @@ idf.py menuconfig</pre>
 ./scripts/flash.sh --s3-voice /dev/cu.usbmodem1101
 # or encrypted flash:
 ./scripts/flash-secure.sh --s3-voice /dev/cu.usbmodem1101</pre>
-          <p class="inline-note">The voice preset enables <code>CONFIG_ZCLAW_VOICE</code>. It is intentionally separate from the default 888 KiB budgeted profile. Configure board-specific I2S mic pins in <code>idf.py menuconfig</code> under <code>zclaw Configuration -&gt; Voice (Experimental)</code>. Relay-side transcription needs <code>ZCLAW_STT_API_KEY</code> (or <code>OPENAI_API_KEY</code>) in the host environment when running <code>./scripts/web-relay.sh</code>. Use <code>--s3-sense-voice</code> as a compatibility alias if needed.</p>
+          <pre># Voice preset + explicit I2S mic pins (board-specific)
+./scripts/flash.sh --s3-voice --voice-i2s-bclk 9 --voice-i2s-ws 45 --voice-i2s-din 8 /dev/cu.usbmodem1101
+# install.sh passthrough:
+./install.sh --flash --voice --voice-i2s-bclk 9 --voice-i2s-ws 45 --voice-i2s-din 8</pre>
+          <pre># XIAO ESP32S3 Sense onboard mic (PDM) preset
+./scripts/flash.sh --s3-sense-voice /dev/cu.usbmodem1101</pre>
+          <p class="inline-note">The voice preset enables <code>CONFIG_ZCLAW_VOICE</code>. It is intentionally separate from the default 888 KiB budgeted profile. Use <code>--s3-voice</code> for generic STD-I2S microphone wiring, and set board-specific I2S mic pins with <code>--voice-i2s-bclk</code>, <code>--voice-i2s-ws</code>, <code>--voice-i2s-din</code> (and optional <code>--voice-i2s-port</code>) on build/flash/install scripts, or in <code>idf.py menuconfig</code> under <code>zclaw Configuration -&gt; Voice (Experimental)</code>. Use <code>--s3-sense-voice</code> for XIAO ESP32S3 Sense onboard PDM mic defaults (CLK=42, DIN=41) and octal PSRAM mode. Both S3 voice presets enable PSRAM when present and set <code>CONFIG_SPIRAM_IGNORE_NOTFOUND=y</code>, so non-PSRAM S3 boards still boot (with shorter max utterance buffers when internal heap is tight). Relay-side transcription needs <code>ZCLAW_STT_API_KEY</code> (or <code>OPENAI_API_KEY</code>) in the host environment when running <code>./scripts/web-relay.sh</code>.</p>
         </section>
 
         <section class="section">

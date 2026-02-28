@@ -18,6 +18,7 @@ void agent_test_set_queues(QueueHandle_t channel_output_queue,
                            QueueHandle_t telegram_output_queue);
 void agent_test_process_message(const char *user_message);
 void agent_test_process_message_for_chat(const char *user_message, int64_t reply_chat_id);
+void agent_test_process_voice_message(const char *user_message);
 #endif
 
 #endif // AGENT_H

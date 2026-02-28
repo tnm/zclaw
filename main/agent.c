@@ -30,6 +30,7 @@ static int64_t s_last_non_command_response_us = 0;
 static char s_last_non_command_text[CHANNEL_RX_BUF_SIZE] = {0};
 static bool s_messages_paused = false;
 static char s_system_prompt_buf[2048];
+static char s_voice_echo_buf[TELEGRAM_MAX_MSG_LEN];
 
 typedef enum {
     AGENT_PERSONA_NEUTRAL = 0,
@@ -179,6 +180,20 @@ static void send_response(const char *text, int64_t chat_id)
 {
     queue_channel_response(text);
     queue_telegram_response(text, chat_id);
+}
+
+static void queue_voice_input_telegram_echo(const char *text, int64_t chat_id)
+{
+    if (!text || text[0] == '\0') {
+        return;
+    }
+
+    int written = snprintf(s_voice_echo_buf, sizeof(s_voice_echo_buf), "You (voice): %s", text);
+    if (written <= 0) {
+        return;
+    }
+
+    queue_telegram_response(s_voice_echo_buf, chat_id);
 }
 
 static bool is_whitespace_char(char c)
@@ -445,7 +460,7 @@ static int64_t response_chat_id_for_source(message_source_t source, int64_t chat
 }
 
 // Process a single user message
-static void process_message(const char *user_message, int64_t reply_chat_id)
+static void process_message(const char *user_message, int64_t reply_chat_id, message_source_t source)
 {
     ESP_LOGI(TAG, "Processing: %s", user_message);
     int history_turn_start = s_history_len;
@@ -534,6 +549,10 @@ static void process_message(const char *user_message, int64_t reply_chat_id)
             metrics_log_request(&metrics, "replay_suppressed");
             return;
         }
+    }
+
+    if (source == MSG_SOURCE_VOICE && is_non_command_message) {
+        queue_voice_input_telegram_echo(user_message, reply_chat_id);
     }
 
     // Get tools
@@ -779,12 +798,17 @@ void agent_test_set_queues(QueueHandle_t channel_output_queue,
 
 void agent_test_process_message(const char *user_message)
 {
-    process_message(user_message, 0);
+    process_message(user_message, 0, MSG_SOURCE_CHANNEL);
 }
 
 void agent_test_process_message_for_chat(const char *user_message, int64_t reply_chat_id)
 {
-    process_message(user_message, reply_chat_id);
+    process_message(user_message, reply_chat_id, MSG_SOURCE_TELEGRAM);
+}
+
+void agent_test_process_voice_message(const char *user_message)
+{
+    process_message(user_message, 0, MSG_SOURCE_VOICE);
 }
 #endif
 
@@ -798,7 +822,9 @@ static void agent_task(void *arg)
 
     while (1) {
         if (xQueueReceive(s_input_queue, &msg, portMAX_DELAY) == pdTRUE) {
-            process_message(msg.text, response_chat_id_for_source(msg.source, msg.chat_id));
+            process_message(msg.text,
+                            response_chat_id_for_source(msg.source, msg.chat_id),
+                            msg.source);
         }
     }
 }

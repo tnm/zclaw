@@ -65,11 +65,11 @@ menu "zclaw Configuration"
 
     menu "Voice (Experimental)"
         config ZCLAW_VOICE
-            bool "Enable on-device voice pipeline (wake word + cloud STT)"
+            bool "Enable on-device voice pipeline (VAD + cloud STT)"
             default n
             help
                 Enables experimental voice input pipeline intended for ESP32-S3-class
-                targets with I2S microphone front-ends.
+                targets with digital microphone front-ends (STD-I2S or PDM).
                 Keep disabled for default low-footprint builds.
 
         if ZCLAW_VOICE
@@ -88,12 +88,62 @@ menu "zclaw Configuration"
                     Frame size used by voice capture/processing pipeline.
 
             config ZCLAW_VOICE_RELAY_STT
-                bool "Enable host-relay STT bridge over serial"
+                bool "Enable host-relay STT bridge"
                 default y
                 help
                     Streams captured PCM audio to scripts/web_relay.py for
                     cloud transcription on the host side. Keep enabled for
                     low-footprint firmware experiments.
+
+            choice ZCLAW_VOICE_RELAY_TRANSPORT
+                prompt "Relay STT transport"
+                default ZCLAW_VOICE_RELAY_TRANSPORT_SERIAL
+                depends on ZCLAW_VOICE_RELAY_STT
+                help
+                    Transport used to send captured voice audio to the host relay.
+
+                config ZCLAW_VOICE_RELAY_TRANSPORT_SERIAL
+                    bool "Serial sideband (legacy)"
+                    help
+                        Sends base64 PCM chunks over the channel sideband protocol.
+
+                config ZCLAW_VOICE_RELAY_TRANSPORT_HTTP
+                    bool "HTTP upload"
+                    help
+                        Sends PCM audio to a host HTTP relay endpoint.
+            endchoice
+
+            config ZCLAW_VOICE_HTTP_STT_URL
+                string "HTTP relay STT endpoint URL"
+                default ""
+                depends on ZCLAW_VOICE_RELAY_TRANSPORT_HTTP
+                help
+                    Full URL of the host relay endpoint, for example:
+                    http://192.168.1.10:8787/api/voice/stt
+
+            config ZCLAW_VOICE_HTTP_API_KEY
+                string "HTTP relay API key (optional)"
+                default ""
+                depends on ZCLAW_VOICE_RELAY_TRANSPORT_HTTP
+                help
+                    Optional API key sent as X-Zclaw-Key for relay auth.
+
+            choice ZCLAW_VOICE_CAPTURE_MODE
+                prompt "Voice capture front-end"
+                default ZCLAW_VOICE_CAPTURE_STD_I2S
+                help
+                    Select the digital microphone signaling mode.
+
+                config ZCLAW_VOICE_CAPTURE_STD_I2S
+                    bool "STD-I2S microphone (BCLK/WS/DIN)"
+                    help
+                        Use standard I2S serial microphone wiring.
+
+                config ZCLAW_VOICE_CAPTURE_PDM
+                    bool "PDM microphone (CLK/DIN)"
+                    help
+                        Use pulse-density modulation microphone wiring.
+            endchoice
 
             config ZCLAW_VOICE_VAD_START_THRESHOLD
                 int "VAD start threshold (mean abs PCM)"
@@ -138,6 +188,16 @@ menu "zclaw Configuration"
                 help
                     Maximum wait for host relay transcription response.
 
+            config ZCLAW_VOICE_CAPTURE_ALLOC_RESERVE_BYTES
+                int "Heap reserve for voice capture allocation (bytes)"
+                range 2048 131072
+                default 32768
+                help
+                    Minimum internal-heap headroom preserved when sizing the
+                    voice utterance capture buffer. Lower values increase max
+                    utterance duration on low-memory boards but can raise risk
+                    of runtime heap pressure.
+
             config ZCLAW_VOICE_I2S_PORT
                 int "I2S controller index"
                 range 0 1
@@ -146,27 +206,43 @@ menu "zclaw Configuration"
                     I2S peripheral index used for microphone capture.
 
             config ZCLAW_VOICE_I2S_BCLK_GPIO
-                int "I2S BCLK GPIO"
+                int "STD-I2S BCLK GPIO"
                 range -1 48
                 default -1
                 help
-                    Bit clock pin for I2S microphone.
+                    Bit clock pin for STD-I2S microphone.
                     Set to -1 to keep voice capture disabled at runtime.
 
             config ZCLAW_VOICE_I2S_WS_GPIO
-                int "I2S WS/LRCLK GPIO"
+                int "STD-I2S WS/LRCLK GPIO"
                 range -1 48
                 default -1
                 help
-                    Word-select / LRCLK pin for I2S microphone.
+                    Word-select / LRCLK pin for STD-I2S microphone.
                     Set to -1 to keep voice capture disabled at runtime.
 
             config ZCLAW_VOICE_I2S_DIN_GPIO
-                int "I2S DIN GPIO"
+                int "STD-I2S DIN GPIO"
                 range -1 48
                 default -1
                 help
-                    Data-in pin for I2S microphone.
+                    Data-in pin for STD-I2S microphone.
+                    Set to -1 to keep voice capture disabled at runtime.
+
+            config ZCLAW_VOICE_PDM_CLK_GPIO
+                int "PDM CLK GPIO"
+                range -1 48
+                default -1
+                help
+                    Clock pin for PDM microphone.
+                    Set to -1 to keep voice capture disabled at runtime.
+
+            config ZCLAW_VOICE_PDM_DIN_GPIO
+                int "PDM DIN GPIO"
+                range -1 48
+                default -1
+                help
+                    Data-in pin for PDM microphone.
                     Set to -1 to keep voice capture disabled at runtime.
         endif
     endmenu

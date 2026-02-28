@@ -577,6 +577,45 @@ TEST(telegram_response_preserves_reply_chat_id)
     return 0;
 }
 
+TEST(voice_input_is_forwarded_to_telegram)
+{
+    QueueHandle_t channel_q;
+    QueueHandle_t telegram_q;
+    telegram_msg_t msg;
+    char channel_text[CHANNEL_TX_BUF_SIZE];
+    const char *success =
+        "{\"content\":[{\"type\":\"text\",\"text\":\"voice reply\"}],\"stop_reason\":\"end_turn\"}";
+
+    reset_state();
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    telegram_q = xQueueCreate(4, sizeof(telegram_msg_t));
+    ASSERT(channel_q != NULL);
+    ASSERT(telegram_q != NULL);
+    agent_test_set_queues(channel_q, telegram_q);
+
+    ASSERT(mock_llm_push_result(ESP_OK, success));
+    agent_test_process_voice_message("turn on gpio 5");
+
+    ASSERT(mock_llm_request_count() == 1);
+
+    ASSERT(recv_channel_text(channel_q, channel_text, sizeof(channel_text)) == 1);
+    ASSERT_STR_EQ(channel_text, "voice reply");
+    ASSERT(recv_channel_text(channel_q, channel_text, sizeof(channel_text)) == 0);
+
+    ASSERT(recv_telegram_msg(telegram_q, &msg) == 1);
+    ASSERT_STR_EQ(msg.text, "You (voice): turn on gpio 5");
+    ASSERT(msg.chat_id == 0);
+
+    ASSERT(recv_telegram_msg(telegram_q, &msg) == 1);
+    ASSERT_STR_EQ(msg.text, "voice reply");
+    ASSERT(msg.chat_id == 0);
+
+    vQueueDelete(channel_q);
+    vQueueDelete(telegram_q);
+    return 0;
+}
+
 int test_agent_all(void)
 {
     int failures = 0;
@@ -676,6 +715,13 @@ int test_agent_all(void)
 
     printf("  telegram_response_preserves_reply_chat_id... ");
     if (test_telegram_response_preserves_reply_chat_id() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  voice_input_is_forwarded_to_telegram... ");
+    if (test_voice_input_is_forwarded_to_telegram() == 0) {
         printf("OK\n");
     } else {
         failures++;

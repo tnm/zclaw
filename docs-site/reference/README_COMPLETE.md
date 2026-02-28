@@ -82,7 +82,20 @@ ESP32-S3 voice preset (experimental):
 ./scripts/flash-secure.sh --s3-voice /dev/cu.usbmodem1101
 ```
 
-`--s3-voice` applies an opt-in profile (`sdkconfig.esp32s3-voice.defaults`) that enables `CONFIG_ZCLAW_VOICE`. This profile is intentionally separate from the default 888 KiB budgeted build. Configure board-specific I2S mic pins in `idf.py menuconfig` under `zclaw Configuration -> Voice (Experimental)`. Relay-side transcription needs `ZCLAW_STT_API_KEY` (or `OPENAI_API_KEY`) in the host environment when running `./scripts/web-relay.sh`. `--s3-sense-voice` remains as a compatibility alias.
+```bash
+# Voice preset + explicit I2S mic pins (board-specific)
+./scripts/flash.sh --s3-voice --voice-i2s-bclk 9 --voice-i2s-ws 45 --voice-i2s-din 8 /dev/cu.usbmodem1101
+
+# install.sh passthrough:
+./install.sh --flash --voice --voice-i2s-bclk 9 --voice-i2s-ws 45 --voice-i2s-din 8
+```
+
+```bash
+# XIAO ESP32S3 Sense onboard mic (PDM) preset
+./scripts/flash.sh --s3-sense-voice /dev/cu.usbmodem1101
+```
+
+`--s3-voice` applies an opt-in profile (`sdkconfig.esp32s3-voice.defaults`) that enables `CONFIG_ZCLAW_VOICE` with generic STD-I2S capture defaults. This profile is intentionally separate from the default 888 KiB budgeted build. Set board-specific I2S mic pins with `--voice-i2s-bclk`, `--voice-i2s-ws`, `--voice-i2s-din` (and optional `--voice-i2s-port`) on build/flash/install scripts, or in `idf.py menuconfig` under `zclaw Configuration -> Voice (Experimental)`. `--s3-sense-voice` applies XIAO ESP32S3 Sense onboard PDM mic defaults (CLK=42, DIN=41) and octal PSRAM mode. Both S3 voice presets enable PSRAM when present and set `CONFIG_SPIRAM_IGNORE_NOTFOUND=y`, so non-PSRAM S3 boards still boot (with shorter max utterance buffers when internal heap is tight). Relay-side transcription needs `ZCLAW_STT_API_KEY` (or `OPENAI_API_KEY`) in the host environment when running `./scripts/web-relay.sh`.
 
 ## Quick Start
 

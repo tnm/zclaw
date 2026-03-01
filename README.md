@@ -58,6 +58,7 @@ Non-interactive install:
 - After flashing, provision WiFi + LLM credentials with `./scripts/provision.sh`.
 - You can re-run either `./scripts/provision.sh` or `./scripts/provision-dev.sh` at any time (no reflash required) to update runtime credentials: WiFi SSID/password, LLM backend/model/API key (or Ollama API URL), and Telegram token/chat ID allowlist.
 - Optional email tools (`email_send`, `email_list`, `email_read`) use an external bridge; provision `--email-bridge-url` and `--email-bridge-key` to enable.
+- Host coverage for email tools runs in `./scripts/test.sh host` (validation, payload wiring, and bridge error handling for send/list/read).
 - Default LLM rate limits are `100/hour` and `1000/day`; change compile-time limits in `main/config.h` (`RATELIMIT_*`).
 - Quick validation path: run `./scripts/web-relay.sh` and send a test message to confirm the device can answer.
 - If serial port is busy, run `./scripts/release-port.sh` and retry.

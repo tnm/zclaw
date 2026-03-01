@@ -294,6 +294,28 @@ Example tool call inputs:
 {"id":"18f7d2a4c0d7d321","max_chars":1200}
 ```
 
+#### Testing Email Flows
+
+Host/unit coverage:
+
+- `./scripts/test.sh host` includes `Email Tool Tests` with a mocked bridge.
+- Cases include input validation, request payload forwarding, success formatting, and non-2xx/truncated bridge failures.
+
+Live device + bridge smoke path:
+
+1. Provision bridge settings:
+   - `./scripts/provision.sh --email-bridge-url https://<bridge-host> --email-bridge-key <token>`
+2. Run chat path (`./scripts/web-relay.sh` or Telegram) and exercise:
+   - `email_send` with a known recipient
+   - `email_list` for inbox/unread
+   - `email_read` for one returned id
+3. Confirm no runtime regressions while testing:
+   - run `/diag runtime verbose` and `/diag memory verbose` before/after repeated email tool calls.
+
+Soak recommendation:
+
+- Run repeated list/read rounds for 30-60 minutes against a staging mailbox and check monitor logs for heap drift, HTTP errors, or watchdog resets.
+
 ### Timezone And Daily Schedules
 
 - `daily` schedules run in the device timezone.

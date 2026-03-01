@@ -14,6 +14,10 @@
 
 static const char *TAG = "tools";
 
+#ifndef GPIO_IS_VALID_GPIO
+#define GPIO_IS_VALID_GPIO(pin) ((pin) >= 0)
+#endif
+
 static bool gpio_pin_in_allowlist(int pin, const char *csv)
 {
     const char *cursor;
@@ -53,19 +57,63 @@ static bool gpio_pin_in_allowlist(int pin, const char *csv)
 
 static bool gpio_pin_is_allowed(int pin)
 {
-    if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
-        return gpio_pin_in_allowlist(pin, GPIO_ALLOWED_PINS_CSV);
+    bool in_policy;
+
+    if (pin < 0) {
+        return false;
     }
-    return pin >= GPIO_MIN_PIN && pin <= GPIO_MAX_PIN;
+
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    // ESP32-WROOM flash is wired to GPIO6..GPIO11; touching these pins can crash/hang.
+    if (pin >= 6 && pin <= 11) {
+        return false;
+    }
+#endif
+
+    if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
+        in_policy = gpio_pin_in_allowlist(pin, GPIO_ALLOWED_PINS_CSV);
+    } else {
+        in_policy = pin >= GPIO_MIN_PIN && pin <= GPIO_MAX_PIN;
+    }
+
+    if (!in_policy) {
+        return false;
+    }
+
+    return GPIO_IS_VALID_GPIO((gpio_num_t)pin);
+}
+
+static bool gpio_pin_forbidden_hint(int pin, char *result, size_t result_len)
+{
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    if (pin >= 6 && pin <= 11) {
+        snprintf(result, result_len,
+                 "Error: pin %d is reserved for ESP32 flash/PSRAM (GPIO6-11); choose a different pin",
+                 pin);
+        return true;
+    }
+#else
+    (void)pin;
+    (void)result;
+    (void)result_len;
+#endif
+    return false;
 }
 
 static bool gpio_append_read_state(char **cursor, size_t *remaining, int pin, bool first_pin)
 {
     int level;
+    int err;
     int written;
 
-    gpio_reset_pin(pin);
-    gpio_set_direction(pin, GPIO_MODE_INPUT);
+    err = gpio_reset_pin(pin);
+    if (err != 0) {
+        return false;
+    }
+    err = gpio_set_direction(pin, GPIO_MODE_INPUT);
+    if (err != 0) {
+        return false;
+    }
     level = gpio_get_level(pin);
 
     written = snprintf(*cursor, *remaining, "%s%d=%s",
@@ -99,6 +147,9 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
     int state = state_json->valueint;
 
     if (!gpio_pin_is_allowed(pin)) {
+        if (gpio_pin_forbidden_hint(pin, result, result_len)) {
+            return false;
+        }
         if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
             snprintf(result, result_len, "Error: pin %d is not in allowed list", pin);
         } else {
@@ -107,9 +158,12 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
         return false;
     }
 
-    gpio_reset_pin(pin);
-    gpio_set_direction(pin, GPIO_MODE_OUTPUT);
-    gpio_set_level(pin, state ? 1 : 0);
+    if (gpio_reset_pin(pin) != 0 ||
+        gpio_set_direction(pin, GPIO_MODE_OUTPUT) != 0 ||
+        gpio_set_level(pin, state ? 1 : 0) != 0) {
+        snprintf(result, result_len, "Error: failed to configure/write pin %d", pin);
+        return false;
+    }
 
     snprintf(result, result_len, "Pin %d → %s", pin, state ? "HIGH" : "LOW");
     return true;
@@ -127,6 +181,9 @@ bool tools_gpio_read_handler(const cJSON *input, char *result, size_t result_len
     int pin = pin_json->valueint;
 
     if (!gpio_pin_is_allowed(pin)) {
+        if (gpio_pin_forbidden_hint(pin, result, result_len)) {
+            return false;
+        }
         if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
             snprintf(result, result_len, "Error: pin %d is not in allowed list", pin);
         } else {
@@ -135,8 +192,10 @@ bool tools_gpio_read_handler(const cJSON *input, char *result, size_t result_len
         return false;
     }
 
-    gpio_reset_pin(pin);
-    gpio_set_direction(pin, GPIO_MODE_INPUT);
+    if (gpio_reset_pin(pin) != 0 || gpio_set_direction(pin, GPIO_MODE_INPUT) != 0) {
+        snprintf(result, result_len, "Error: failed to configure/read pin %d", pin);
+        return false;
+    }
     int level = gpio_get_level(pin);
 
     snprintf(result, result_len, "Pin %d = %s", pin, level ? "HIGH" : "LOW");
@@ -189,9 +248,13 @@ bool tools_gpio_read_all_handler(const cJSON *input, char *result, size_t result
                 csv_cursor = endptr;
                 continue;
             }
+            if (!gpio_pin_is_allowed((int)value)) {
+                csv_cursor = endptr;
+                continue;
+            }
 
             if (!gpio_append_read_state(&cursor, &remaining, (int)value, count == 0)) {
-                snprintf(result, result_len, "Error: GPIO state list exceeded response buffer");
+                snprintf(result, result_len, "Error: failed to read allowed GPIO pin state");
                 return false;
             }
             count++;
@@ -200,8 +263,11 @@ bool tools_gpio_read_all_handler(const cJSON *input, char *result, size_t result
     } else {
         int pin;
         for (pin = GPIO_MIN_PIN; pin <= GPIO_MAX_PIN; pin++) {
+            if (!gpio_pin_is_allowed(pin)) {
+                continue;
+            }
             if (!gpio_append_read_state(&cursor, &remaining, pin, count == 0)) {
-                snprintf(result, result_len, "Error: GPIO state list exceeded response buffer");
+                snprintf(result, result_len, "Error: failed to read allowed GPIO pin state");
                 return false;
             }
             count++;
@@ -247,6 +313,20 @@ bool tools_delay_handler(const cJSON *input, char *result, size_t result_len)
 #ifdef TEST_BUILD
 bool tools_gpio_test_pin_is_allowed(int pin, const char *csv, int min_pin, int max_pin)
 {
+    if (csv && csv[0] != '\0') {
+        return gpio_pin_in_allowlist(pin, csv);
+    }
+    return pin >= min_pin && pin <= max_pin;
+}
+
+bool tools_gpio_test_pin_is_allowed_for_esp32_target(int pin, const char *csv, int min_pin, int max_pin)
+{
+    if (pin < 0) {
+        return false;
+    }
+    if (pin >= 6 && pin <= 11) {
+        return false;
+    }
     if (csv && csv[0] != '\0') {
         return gpio_pin_in_allowlist(pin, csv);
     }

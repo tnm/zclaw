@@ -53,6 +53,7 @@ Tested targets are **ESP32-C3**, **ESP32-S3**, and **ESP32-C6**.
 Other ESP32 variants should work fine (some may require manual ESP-IDF target setup):
 
 - Default GPIO tool pin limits are configured for ESP32-C3 dev workflows (`GPIO 2-10`).
+- On classic ESP32-WROOM/DevKit (`esp32` target), runtime guardrails block GPIO6-11 because those pins are wired to SPI flash/PSRAM.
 - If your board wiring differs, adjust `zclaw Configuration -> GPIO Tool Safety` in `idf.py menuconfig`.
 - For boards with non-contiguous pins (for example XIAO ESP32S3), set `Allowed GPIO pins list` to a comma-separated whitelist. Example for XIAO ESP32S3 D0-D10: `1,2,3,4,5,6,7,8,9,43,44`
 

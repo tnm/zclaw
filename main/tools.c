@@ -143,6 +143,25 @@ static const tool_def_t s_tools[] = {
         .input_schema_json = "{\"type\":\"object\",\"properties\":{\"scope\":{\"type\":\"string\",\"enum\":[\"quick\",\"runtime\",\"memory\",\"rates\",\"time\",\"all\"],\"description\":\"Optional diagnostics scope (default quick)\"},\"verbose\":{\"type\":\"boolean\",\"description\":\"Include extra details (default false)\"}}}",
         .execute = tools_get_diagnostics_handler
     },
+    // Email Bridge
+    {
+        .name = "email_send",
+        .description = "Send an email through the configured email bridge service. Requires bridge provisioning.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"to\":{\"type\":\"string\",\"description\":\"Recipient email address\"},\"subject\":{\"type\":\"string\",\"description\":\"Email subject\"},\"body\":{\"type\":\"string\",\"description\":\"Plain-text email body\"}},\"required\":[\"to\",\"subject\",\"body\"]}",
+        .execute = tools_email_send_handler
+    },
+    {
+        .name = "email_list",
+        .description = "List recent emails through the configured email bridge service. Supports optional unread filtering.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"label\":{\"type\":\"string\",\"description\":\"Optional mailbox label (default INBOX)\"},\"max\":{\"type\":\"integer\",\"description\":\"Max emails to return (1-20, default 5)\"},\"unread_only\":{\"type\":\"boolean\",\"description\":\"When true, return unread email only\"}}}",
+        .execute = tools_email_list_handler
+    },
+    {
+        .name = "email_read",
+        .description = "Read a specific email by message id through the configured email bridge service.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Message identifier from email_list\"},\"max_chars\":{\"type\":\"integer\",\"description\":\"Optional max body characters to return (200-4000, default 1200)\"}},\"required\":[\"id\"]}",
+        .execute = tools_email_read_handler
+    },
     // User Tool Management
     {
         .name = "create_tool",

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="zclaw Field Guide: practical docs for the ESP32-resident AI assistant with GPIO, schedules, memory, and tool calling.">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="zclaw - Field Guide">
+    <meta property="og:title" content="zclaw - Field Guide | Email Bridge">
+    <meta property="og:description" content="Bridge-backed Gmail integration for zclaw email send/list/read workflows.">
+    <meta property="og:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <meta property="og:image:alt" content="Lobster soldering a Seeed Studio XIAO ESP32-C3">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="zclaw - Field Guide | Email Bridge">
+    <meta name="twitter:description" content="Bridge-backed Gmail integration for zclaw email send/list/read workflows.">
+    <meta name="twitter:image" content="https://zclaw.dev/images/lobster_xiao_cropped_left.png">
+    <title>zclaw - Field Guide | Email Bridge</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="page">
+      <aside class="sidebar">
+        <div class="brand">
+          <h1>zclaw</h1>
+          <p>Field Guide</p>
+        </div>
+        <div class="divider"></div>
+        <ul class="chapter-list">
+          <li><a href="index.html">Chapter 0 · Overview</a></li>
+          <li><a href="getting-started.html">Chapter 1 · Getting Started</a></li>
+          <li><a href="tools.html">Chapter 2 · Tool Surface</a></li>
+          <li><a href="architecture.html">Chapter 3 · Runtime Anatomy</a></li>
+          <li><a href="security.html">Chapter 4 · Security &amp; Ops</a></li>
+          <li><a href="build-your-own-tool.html">Chapter 5 · Build Your Own Tool</a></li>
+          <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
+          <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
+          <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+          <li><a href="email-bridge.html">Chapter 9 · Email Bridge</a></li>
+        </ul>
+      </aside>
+
+      <main class="content-wrap">
+        <div class="topbar">
+          <p class="kicker">zclaw docs</p>
+          <div class="topbar-actions">
+            <button class="menu-toggle" type="button" aria-label="Open chapter menu">☰</button>
+          </div>
+        </div>
+
+        <header>
+          <p class="kicker">chapter 9</p>
+          <h1 class="page-title">Email Bridge</h1>
+          <p class="deck">zclaw email is intentionally bridge-backed: ESP32 calls a simple HTTPS API while bridge service handles Gmail OAuth and mailbox API complexity.</p>
+        </header>
+
+        <section class="section">
+          <h2>Why Bridge-Backed</h2>
+          <ul>
+            <li>Direct on-device Gmail/IMAP integration is heavy (OAuth token lifecycle, MIME parsing, attachment handling).</li>
+            <li>Bridge keeps firmware small and stable while still enabling email send/list/read tools.</li>
+            <li>ESP32 only stores bridge URL + key and speaks plain HTTPS JSON.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Tool Surface</h2>
+          <table>
+            <thead>
+              <tr><th>Tool</th><th>Input</th><th>Behavior</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>email_send</code></td><td><code>to</code>, <code>subject</code>, <code>body</code></td><td>Sends an outbound email via bridge provider account.</td></tr>
+              <tr><td><code>email_list</code></td><td>optional <code>label</code>, <code>max</code>, <code>unread_only</code></td><td>Returns recent message summaries and ids.</td></tr>
+              <tr><td><code>email_read</code></td><td><code>id</code>, optional <code>max_chars</code></td><td>Fetches one message body/metadata by id.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="section">
+          <h2>Bridge Contract</h2>
+          <p>Firmware expects these bridge endpoints:</p>
+          <ul>
+            <li><code>POST /v1/email/send</code></li>
+            <li><code>POST /v1/email/list</code></li>
+            <li><code>POST /v1/email/read</code></li>
+          </ul>
+          <p>Request auth header: <code>Authorization: Bearer &lt;email_bridge_key&gt;</code> (bridge may also accept <code>X-Zclaw-Bridge-Key</code>).</p>
+          <p class="inline-note">Bridge should return concise JSON (for example <code>summary</code> or <code>items</code> fields) for best model usability.</p>
+        </section>
+
+        <section class="section">
+          <h2>Provisioning</h2>
+          <pre># direct provisioning
+./scripts/provision.sh \
+  --port /dev/cu.usbmodem1101 \
+  --ssid "HomeWiFi" --pass "wifi-password" \
+  --backend openai --api-key "sk-..." \
+  --email-bridge-url "https://bridge.example.com" \
+  --email-bridge-key "bridge-secret-token"</pre>
+
+          <pre># local dev profile values (~/.config/zclaw/dev.env)
+ZCLAW_EMAIL_BRIDGE_URL=https://bridge.example.com
+ZCLAW_EMAIL_BRIDGE_KEY=bridge-secret-token
+
+./scripts/provision-dev.sh --show-config
+./scripts/provision-dev.sh</pre>
+        </section>
+
+        <section class="section">
+          <h2>Security Notes</h2>
+          <ul>
+            <li>Use HTTPS bridge URLs only.</li>
+            <li>Treat bridge key as a credential; rotate on leak.</li>
+            <li>Keep Gmail OAuth tokens only on bridge host, never on ESP32.</li>
+            <li>Enforce recipient allowlists and per-device rate limits in bridge.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2>Current Scope</h2>
+          <p>Current firmware support is Gmail-ready bridge plumbing plus tool handlers. Bridge implementation itself can be self-hosted (Cloud Run/Fly/Render/VPS) and layered with Gmail API next.</p>
+        </section>
+
+        <footer class="footer">
+          <p>See also <a href="tools.html">tool surface</a> and <a href="security.html">security/ops</a> guidance.</p>
+        </footer>
+      </main>
+    </div>
+    <script src="app.js"></script>
+  </body>
+</html>

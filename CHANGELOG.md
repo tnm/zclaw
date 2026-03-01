@@ -25,6 +25,22 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ### Tests
 - Added host coverage for runtime diagnostics command handling and ESP32 flash-pin exclusion behavior in GPIO policy tests.
 
+## [2.8.0] - 2026-02-28
+
+### Fixed
+- Set the default runtime UART channel to `uart0` for classic ESP32/WROOM workflows to avoid channel mismatches.
+- Hardened flash/install guardrails by adding connected-chip detection and target-mismatch checks before flashing.
+
+### Changed
+- Build/flash/monitor/erase/provision scripts now include improved serial-port handling and safer board-target defaults during install flows.
+- Added factory-reset pin/hold Kconfig options consumed by runtime defaults.
+
+### Docs
+- Updated Getting Started and full reference docs for the safer install/flash flow and new serial troubleshooting guidance.
+
+### Tests
+- Added host coverage for install/provision script argument handling and flash target-guard behavior.
+
 ## [2.7.1] - 2026-02-23
 
 ### Fixed

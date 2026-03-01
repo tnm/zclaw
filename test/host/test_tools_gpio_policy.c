@@ -6,6 +6,7 @@
 #include <string.h>
 #include <cjson/cJSON.h>
 #include "config.h"
+#include "driver/gpio.h"
 #include "tools_handlers.h"
 
 #define TEST(name) static int test_##name(void)
@@ -18,6 +19,12 @@
 #define ASSERT_STR_EQ(a, b) do { \
     if (strcmp((a), (b)) != 0) { \
         printf("  FAIL: '%s' != '%s' (line %d)\n", (a), (b), __LINE__); \
+        return 1; \
+    } \
+} while(0)
+#define ASSERT_STR_CONTAINS(haystack, needle) do { \
+    if (strstr((haystack), (needle)) == NULL) { \
+        printf("  FAIL: expected substring '%s' in '%s' (line %d)\n", (needle), (haystack), __LINE__); \
         return 1; \
     } \
 } while(0)
@@ -57,6 +64,7 @@ static void build_expected_range_read_all(char *buf, size_t buf_len)
 
 TEST(range_policy)
 {
+    gpio_test_reset_state();
     ASSERT(!tools_gpio_test_pin_is_allowed(1, "", 2, 10));
     ASSERT(tools_gpio_test_pin_is_allowed(2, "", 2, 10));
     ASSERT(tools_gpio_test_pin_is_allowed(10, "", 2, 10));
@@ -66,6 +74,7 @@ TEST(range_policy)
 
 TEST(allowlist_policy_non_contiguous)
 {
+    gpio_test_reset_state();
     const char *pins = "1,2,3,4,5,6,7,8,9,43,44";
 
     ASSERT(tools_gpio_test_pin_is_allowed(1, pins, 2, 10));
@@ -78,6 +87,7 @@ TEST(allowlist_policy_non_contiguous)
 
 TEST(allowlist_policy_tolerates_spaces_and_invalid_tokens)
 {
+    gpio_test_reset_state();
     const char *pins = " 1, two, 3 , , 44";
 
     ASSERT(tools_gpio_test_pin_is_allowed(1, pins, 0, 0));
@@ -89,6 +99,7 @@ TEST(allowlist_policy_tolerates_spaces_and_invalid_tokens)
 
 TEST(esp32_target_blocks_flash_pins)
 {
+    gpio_test_reset_state();
     ASSERT(tools_gpio_test_pin_is_allowed_for_esp32_target(5, "", 2, 12));
     ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(6, "", 2, 12));
     ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(7, "", 2, 12));
@@ -102,6 +113,7 @@ TEST(esp32_target_blocks_flash_pins)
 
 TEST(read_all_default_range)
 {
+    gpio_test_reset_state();
     cJSON *input = cJSON_CreateObject();
     char result[512] = {0};
     char expected[512] = {0};
@@ -117,6 +129,7 @@ TEST(read_all_default_range)
 
 TEST(read_all_does_not_require_pin_argument)
 {
+    gpio_test_reset_state();
     cJSON *input = cJSON_Parse("{\"pin\":999}");
     char result[512] = {0};
     char expected[512] = {0};
@@ -127,6 +140,82 @@ TEST(read_all_does_not_require_pin_argument)
     ASSERT_STR_EQ(result, expected);
 
     cJSON_Delete(input);
+    return 0;
+}
+
+TEST(write_then_read_preserves_driven_state)
+{
+    cJSON *write_input = cJSON_Parse("{\"pin\":5,\"state\":1}");
+    cJSON *read_input = cJSON_Parse("{\"pin\":5}");
+    char result[256] = {0};
+
+    gpio_test_reset_state();
+    ASSERT(write_input != NULL);
+    ASSERT(read_input != NULL);
+
+    ASSERT(tools_gpio_write_handler(write_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 5 → HIGH");
+
+    ASSERT(tools_gpio_read_handler(read_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 5 = HIGH");
+
+    cJSON_Delete(write_input);
+    cJSON_Delete(read_input);
+    return 0;
+}
+
+TEST(read_all_preserves_written_output_state)
+{
+    cJSON *write_input = cJSON_Parse("{\"pin\":7,\"state\":1}");
+    cJSON *read_input = cJSON_Parse("{\"pin\":7}");
+    cJSON *read_all_input = cJSON_CreateObject();
+    char result[512] = {0};
+
+    gpio_test_reset_state();
+    ASSERT(write_input != NULL);
+    ASSERT(read_input != NULL);
+    ASSERT(read_all_input != NULL);
+
+    ASSERT(tools_gpio_write_handler(write_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 7 → HIGH");
+
+    ASSERT(tools_gpio_read_all_handler(read_all_input, result, sizeof(result)));
+    ASSERT_STR_CONTAINS(result, "7=HIGH");
+
+    ASSERT(tools_gpio_read_handler(read_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 7 = HIGH");
+
+    cJSON_Delete(write_input);
+    cJSON_Delete(read_input);
+    cJSON_Delete(read_all_input);
+    return 0;
+}
+
+TEST(write_high_then_low_roundtrip)
+{
+    cJSON *write_high_input = cJSON_Parse("{\"pin\":8,\"state\":1}");
+    cJSON *write_low_input = cJSON_Parse("{\"pin\":8,\"state\":0}");
+    cJSON *read_input = cJSON_Parse("{\"pin\":8}");
+    char result[256] = {0};
+
+    gpio_test_reset_state();
+    ASSERT(write_high_input != NULL);
+    ASSERT(write_low_input != NULL);
+    ASSERT(read_input != NULL);
+
+    ASSERT(tools_gpio_write_handler(write_high_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 8 → HIGH");
+    ASSERT(tools_gpio_read_handler(read_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 8 = HIGH");
+
+    ASSERT(tools_gpio_write_handler(write_low_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 8 → LOW");
+    ASSERT(tools_gpio_read_handler(read_input, result, sizeof(result)));
+    ASSERT_STR_EQ(result, "Pin 8 = LOW");
+
+    cJSON_Delete(write_high_input);
+    cJSON_Delete(write_low_input);
+    cJSON_Delete(read_input);
     return 0;
 }
 
@@ -173,6 +262,27 @@ int test_tools_gpio_policy_all(void)
 
     printf("  read_all_does_not_require_pin_argument... ");
     if (test_read_all_does_not_require_pin_argument() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  write_then_read_preserves_driven_state... ");
+    if (test_write_then_read_preserves_driven_state() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  read_all_preserves_written_output_state... ");
+    if (test_read_all_preserves_written_output_state() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  write_high_then_low_roundtrip... ");
+    if (test_write_high_then_low_roundtrip() == 0) {
         printf("OK\n");
     } else {
         failures++;

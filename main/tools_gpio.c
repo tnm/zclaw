@@ -103,15 +103,10 @@ static bool gpio_pin_forbidden_hint(int pin, char *result, size_t result_len)
 static bool gpio_append_read_state(char **cursor, size_t *remaining, int pin, bool first_pin)
 {
     int level;
-    int err;
     int written;
 
-    err = gpio_reset_pin(pin);
-    if (err != 0) {
-        return false;
-    }
-    err = gpio_set_direction(pin, GPIO_MODE_INPUT);
-    if (err != 0) {
+    // Enable input path without clobbering current output drive/mode.
+    if (gpio_input_enable(pin) != 0) {
         return false;
     }
     level = gpio_get_level(pin);
@@ -158,8 +153,7 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
         return false;
     }
 
-    if (gpio_reset_pin(pin) != 0 ||
-        gpio_set_direction(pin, GPIO_MODE_OUTPUT) != 0 ||
+    if (gpio_set_direction(pin, GPIO_MODE_INPUT_OUTPUT) != 0 ||
         gpio_set_level(pin, state ? 1 : 0) != 0) {
         snprintf(result, result_len, "Error: failed to configure/write pin %d", pin);
         return false;
@@ -192,7 +186,7 @@ bool tools_gpio_read_handler(const cJSON *input, char *result, size_t result_len
         return false;
     }
 
-    if (gpio_reset_pin(pin) != 0 || gpio_set_direction(pin, GPIO_MODE_INPUT) != 0) {
+    if (gpio_input_enable(pin) != 0) {
         snprintf(result, result_len, "Error: failed to configure/read pin %d", pin);
         return false;
     }

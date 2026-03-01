@@ -57,9 +57,7 @@
           <h2>Current Stream</h2>
           <p><strong>Unreleased</strong></p>
           <ul>
-            <li>Linux installer package support expanded: <code>install.sh</code> now auto-detects <code>apt-get</code>, <code>pacman</code>, <code>dnf</code>, and <code>zypper</code> instead of hard-coding <code>apt</code>.</li>
-            <li>Non-interactive installer prompts now default to <code>no</code> unless <code>-y</code>, explicit flags, or saved preferences are present.</li>
-            <li>Added host tests for Linux package-manager detection and unsupported-manager fallback in the install flow.</li>
+            <li>No unreleased changes yet.</li>
           </ul>
           <p class="inline-note">Source of truth: <a href="https://github.com/tnm/zclaw/blob/main/CHANGELOG.md">CHANGELOG.md in repo</a>.</p>
         </section>
@@ -71,6 +69,11 @@
               <tr><th>Version</th><th>Date</th><th>Highlights</th></tr>
             </thead>
             <tbody>
+              <tr>
+                <td><code>2.9.0</code></td>
+                <td>2026-03-01</td>
+                <td>Minor release: installer now supports distro-aware Linux package installs (<code>apt-get</code>, <code>pacman</code>, <code>dnf</code>, <code>zypper</code>), improves non-interactive prompt safety defaults, and adds host coverage for package-manager detection/fallback behavior.</td>
+              </tr>
               <tr>
                 <td><code>2.8.2</code></td>
                 <td>2026-03-01</td>

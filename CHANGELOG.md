@@ -8,6 +8,23 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - No unreleased changes yet.
 
+## [2.8.1] - 2026-03-01
+
+### Added
+- Added scoped runtime diagnostics via the `get_diagnostics` tool and local `/diag` command support for fast on-device checks.
+
+### Fixed
+- On classic `esp32` targets, GPIO tool operations now block flash/PSRAM-reserved pins (`GPIO6-11`) to avoid crashes on WROOM/VROOM-class boards.
+
+### Changed
+- Hardened GPIO read/write paths with stricter pin validation and clearer errors when pin configuration/read operations fail.
+
+### Docs
+- Updated README/docs references for runtime diagnostics usage and ESP32 GPIO flash-pin guardrails.
+
+### Tests
+- Added host coverage for runtime diagnostics command handling and ESP32 flash-pin exclusion behavior in GPIO policy tests.
+
 ## [2.7.1] - 2026-02-23
 
 ### Fixed

@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+- No unreleased changes yet.
+
+## [2.9.0] - 2026-03-01
+
 ### Fixed
 - Linux installer dependency steps no longer hard-code `apt`; `install.sh` now detects and uses `apt-get`, `pacman`, `dnf`, or `zypper`.
 

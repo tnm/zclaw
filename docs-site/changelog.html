@@ -70,6 +70,11 @@
             </thead>
             <tbody>
               <tr>
+                <td><code>2.8.2</code></td>
+                <td>2026-03-01</td>
+                <td>Bugfix release: GPIO read paths now preserve driven output state (including <code>gpio_read_all</code>), with host regressions added for write/read persistence and HIGH→LOW roundtrip behavior.</td>
+              </tr>
+              <tr>
                 <td><code>2.8.1</code></td>
                 <td>2026-03-01</td>
                 <td>Bugfix release: added scoped runtime diagnostics (`get_diagnostics` and local <code>/diag</code>) and blocked flash/PSRAM-reserved GPIO6-11 on classic <code>esp32</code> targets to prevent WROOM/VROOM pin-crash paths.</td>

@@ -8,6 +8,20 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - No unreleased changes yet.
 
+## [2.8.2] - 2026-03-01
+
+### Fixed
+- GPIO reads now preserve driven output state instead of clobbering pin configuration before sampling.
+- `gpio_read_all` no longer clears previously written pin levels when collecting multi-pin status.
+
+### Changed
+- `gpio_write` now configures pins as `GPIO_MODE_INPUT_OUTPUT` for reliable readback semantics.
+- Read paths use `gpio_input_enable` instead of reset/reconfigure so active output drive is retained.
+
+### Tests
+- Added host regressions for `write -> read`, `read_all` preserving output state, and `HIGH -> LOW -> read` roundtrip behavior.
+- Improved host GPIO driver stub to model input-buffer semantics and pin state transitions.
+
 ## [2.8.1] - 2026-03-01
 
 ### Added

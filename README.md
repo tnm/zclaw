@@ -66,6 +66,7 @@ Non-interactive install:
 - Chat via Telegram or hosted web relay
 - Timezone-aware schedules (`daily`, `periodic`, and one-shot `once`)
 - Built-in + user-defined tools
+- Runtime diagnostics via `get_diagnostics` (quick/runtime/memory/rates/time/all scopes)
 - GPIO read/write control with guardrails (including bulk `gpio_read_all`)
 - Persistent memory across reboots
 - Persona options: `neutral`, `friendly`, `technical`, `witty`

@@ -373,6 +373,139 @@ static bool is_command(const char *message, const char *name)
     return true;
 }
 
+static const char *command_payload(const char *message, const char *name)
+{
+    const char *cursor;
+    size_t name_len;
+
+    if (!is_command(message, name)) {
+        return NULL;
+    }
+
+    while (*message && is_whitespace_char(*message)) {
+        message++;
+    }
+
+    cursor = message + 1; // Skip leading slash
+    name_len = strlen(name);
+    cursor += name_len;
+
+    if (*cursor == '@') {
+        cursor++;
+        while (*cursor && !is_whitespace_char(*cursor)) {
+            cursor++;
+        }
+    }
+
+    while (*cursor && is_whitespace_char(*cursor)) {
+        cursor++;
+    }
+
+    return cursor;
+}
+
+static bool is_diag_scope_token(const char *token)
+{
+    if (!token) {
+        return false;
+    }
+
+    return strcmp(token, "quick") == 0 ||
+           strcmp(token, "runtime") == 0 ||
+           strcmp(token, "memory") == 0 ||
+           strcmp(token, "rates") == 0 ||
+           strcmp(token, "time") == 0 ||
+           strcmp(token, "all") == 0;
+}
+
+static bool parse_diag_command_args(const char *message, cJSON *tool_input, char *error, size_t error_len)
+{
+    const char *payload = command_payload(message, "diag");
+    char payload_buf[128];
+    char *cursor;
+    bool verbose = false;
+    const char *scope = NULL;
+
+    if (!payload || payload[0] == '\0') {
+        return true;
+    }
+
+    if (strlen(payload) >= sizeof(payload_buf)) {
+        snprintf(error, error_len, "Error: /diag arguments too long");
+        return false;
+    }
+
+    snprintf(payload_buf, sizeof(payload_buf), "%s", payload);
+    cursor = strtok(payload_buf, " \t\r\n");
+    while (cursor) {
+        for (size_t i = 0; cursor[i] != '\0'; i++) {
+            cursor[i] = (char)tolower((unsigned char)cursor[i]);
+        }
+
+        if (strcmp(cursor, "verbose") == 0 || strcmp(cursor, "--verbose") == 0) {
+            verbose = true;
+        } else if (!scope && is_diag_scope_token(cursor)) {
+            scope = cursor;
+        } else {
+            snprintf(error, error_len,
+                     "Error: unknown /diag argument '%s' (use scope + optional verbose)",
+                     cursor);
+            return false;
+        }
+
+        cursor = strtok(NULL, " \t\r\n");
+    }
+
+    if (scope) {
+        cJSON_AddStringToObject(tool_input, "scope", scope);
+    }
+    if (verbose) {
+        cJSON_AddBoolToObject(tool_input, "verbose", true);
+    }
+
+    return true;
+}
+
+static void handle_diag_command(const char *user_message, int64_t chat_id, request_metrics_t *metrics)
+{
+    char error[120] = {0};
+    cJSON *tool_input = cJSON_CreateObject();
+    bool ok;
+    int64_t started_us;
+
+    if (!tool_input) {
+        send_response("Error: diagnostics unavailable (allocation failed)", chat_id);
+        metrics_log_request(metrics, "diag_no_mem");
+        return;
+    }
+
+    if (!parse_diag_command_args(user_message, tool_input, error, sizeof(error))) {
+        send_response(error, chat_id);
+        cJSON_Delete(tool_input);
+        metrics_log_request(metrics, "diag_invalid_args");
+        return;
+    }
+
+    s_tool_result_buf[0] = '\0';
+    started_us = esp_timer_get_time();
+    ok = tools_execute("get_diagnostics", tool_input, s_tool_result_buf, sizeof(s_tool_result_buf));
+    metrics->tool_us_total += elapsed_us_since(started_us);
+    metrics->tool_calls++;
+    cJSON_Delete(tool_input);
+
+    if (!ok) {
+        if (s_tool_result_buf[0] == '\0') {
+            snprintf(s_tool_result_buf, sizeof(s_tool_result_buf), "Error: diagnostics failed");
+        }
+        send_response(s_tool_result_buf, chat_id);
+        metrics_log_request(metrics, "diag_failed");
+        return;
+    }
+
+    send_response(s_tool_result_buf, chat_id);
+    metrics_log_request(metrics, "diag_handled");
+}
+
 static bool is_slash_command(const char *message)
 {
     if (!message) {
@@ -416,6 +549,7 @@ static void handle_start_command(int64_t chat_id)
         "Telegram control commands:\n"
         "- /help (show this message)\n"
         "- /settings (show status)\n"
+        "- /diag [scope] [verbose] (local diagnostics)\n"
         "- /stop (pause intake)\n"
         "- /resume (resume)";
     send_response(START_HELP_TEXT, chat_id);
@@ -428,7 +562,7 @@ static void handle_settings_command(int64_t chat_id)
              "zclaw settings:\n"
              "- Message intake: %s\n"
              "- Persona: %s\n"
-             "- Telegram commands: /start, /help, /settings, /stop, /resume\n"
+             "- Telegram commands: /start, /help, /settings, /diag, /stop, /resume\n"
              "- Persona changes: ask in normal chat (handled via tool calls)\n"
              "- Device settings are global (e.g., timezone <name>)",
              s_messages_paused ? "paused" : "active",
@@ -475,6 +609,11 @@ static void process_message(const char *user_message, int64_t reply_chat_id)
     if (is_command(user_message, "settings")) {
         handle_settings_command(reply_chat_id);
         metrics_log_request(&metrics, "settings_handled");
+        return;
+    }
+
+    if (is_command(user_message, "diag")) {
+        handle_diag_command(user_message, reply_chat_id, &metrics);
         return;
     }
 

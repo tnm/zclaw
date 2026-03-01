@@ -37,6 +37,7 @@ bool tools_get_timezone_handler(const cJSON *input, char *result, size_t result_
 // System / User tools
 bool tools_get_version_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_get_health_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_get_diagnostics_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_create_tool_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_list_user_tools_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_delete_user_tool_handler(const cJSON *input, char *result, size_t result_len);

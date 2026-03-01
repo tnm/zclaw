@@ -23,6 +23,7 @@
 } while(0)
 
 bool tools_gpio_test_pin_is_allowed(int pin, const char *csv, int min_pin, int max_pin);
+bool tools_gpio_test_pin_is_allowed_for_esp32_target(int pin, const char *csv, int min_pin, int max_pin);
 
 static void build_expected_range_read_all(char *buf, size_t buf_len)
 {
@@ -86,6 +87,19 @@ TEST(allowlist_policy_tolerates_spaces_and_invalid_tokens)
     return 0;
 }
 
+TEST(esp32_target_blocks_flash_pins)
+{
+    ASSERT(tools_gpio_test_pin_is_allowed_for_esp32_target(5, "", 2, 12));
+    ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(6, "", 2, 12));
+    ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(7, "", 2, 12));
+    ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(8, "", 2, 12));
+    ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(9, "", 2, 12));
+    ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(10, "", 2, 12));
+    ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(11, "", 2, 12));
+    ASSERT(tools_gpio_test_pin_is_allowed_for_esp32_target(12, "", 2, 12));
+    return 0;
+}
+
 TEST(read_all_default_range)
 {
     cJSON *input = cJSON_CreateObject();
@@ -138,6 +152,13 @@ int test_tools_gpio_policy_all(void)
 
     printf("  allowlist_policy_tolerates_spaces_and_invalid_tokens... ");
     if (test_allowlist_policy_tolerates_spaces_and_invalid_tokens() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  esp32_target_blocks_flash_pins... ");
+    if (test_esp32_target_blocks_flash_pins() == 0) {
         printf("OK\n");
     } else {
         failures++;

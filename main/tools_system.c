@@ -11,6 +11,7 @@
 #include "esp_timer.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <limits.h>
 #include <string.h>
 
 typedef enum {
@@ -21,6 +22,35 @@ typedef enum {
     DIAG_SCOPE_TIME,
     DIAG_SCOPE_ALL,
 } diag_scope_t;
+
+static unsigned long clamp_u64_to_ul(uint64_t value)
+{
+    if (value > (uint64_t)ULONG_MAX) {
+        return ULONG_MAX;
+    }
+    return (unsigned long)value;
+}
+
+static void format_uptime_detail(int64_t uptime_us, char *buf, size_t buf_len)
+{
+    uint64_t total_us;
+    unsigned long seconds;
+    unsigned long micros;
+
+    if (!buf || buf_len == 0) {
+        return;
+    }
+
+    if (uptime_us <= 0) {
+        snprintf(buf, buf_len, "unknown");
+        return;
+    }
+
+    total_us = (uint64_t)uptime_us;
+    seconds = clamp_u64_to_ul(total_us / 1000000ULL);
+    micros = (unsigned long)(total_us % 1000000ULL);
+    snprintf(buf, buf_len, "%lu.%06lus", seconds, micros);
+}
 
 static void format_uptime(int64_t uptime_us, char *buf, size_t buf_len)
 {
@@ -48,31 +78,40 @@ static void format_uptime(int64_t uptime_us, char *buf, size_t buf_len)
     seconds = total_s % 60ULL;
 
     if (days > 0) {
+        unsigned long days_ul = clamp_u64_to_ul(days);
+        unsigned long hours_ul = clamp_u64_to_ul(hours);
+        unsigned long minutes_ul = clamp_u64_to_ul(minutes);
+        unsigned long seconds_ul = clamp_u64_to_ul(seconds);
         snprintf(buf, buf_len,
-                 "%llud %02lluh %02llum %02llus",
-                 (unsigned long long)days,
-                 (unsigned long long)hours,
-                 (unsigned long long)minutes,
-                 (unsigned long long)seconds);
+                 "%lud %02luh %02lum %02lus",
+                 days_ul,
+                 hours_ul,
+                 minutes_ul,
+                 seconds_ul);
         return;
     }
     if (hours > 0) {
+        unsigned long hours_ul = clamp_u64_to_ul(hours);
+        unsigned long minutes_ul = clamp_u64_to_ul(minutes);
+        unsigned long seconds_ul = clamp_u64_to_ul(seconds);
         snprintf(buf, buf_len,
-                 "%lluh %02llum %02llus",
-                 (unsigned long long)hours,
-                 (unsigned long long)minutes,
-                 (unsigned long long)seconds);
+                 "%luh %02lum %02lus",
+                 hours_ul,
+                 minutes_ul,
+                 seconds_ul);
         return;
     }
     if (minutes > 0) {
+        unsigned long minutes_ul = clamp_u64_to_ul(minutes);
+        unsigned long seconds_ul = clamp_u64_to_ul(seconds);
         snprintf(buf, buf_len,
-                 "%llum %02llus",
-                 (unsigned long long)minutes,
-                 (unsigned long long)seconds);
+                 "%lum %02lus",
+                 minutes_ul,
+                 seconds_ul);
         return;
     }
 
-    snprintf(buf, buf_len, "%llus", (unsigned long long)seconds);
+    snprintf(buf, buf_len, "%lus", clamp_u64_to_ul(seconds));
 }
 
 static unsigned diag_fragmentation_percent(uint32_t free_heap, uint32_t largest_block)
@@ -243,6 +282,7 @@ bool tools_get_diagnostics_handler(const cJSON *input, char *result, size_t resu
     char timezone_abbrev[16];
     char boot_count[16] = "unknown";
     char uptime_text[48];
+    char uptime_detail[32];
     int64_t uptime_us = esp_timer_get_time();
     diag_scope_t scope = DIAG_SCOPE_QUICK;
     bool verbose = false;
@@ -255,17 +295,18 @@ bool tools_get_diagnostics_handler(const cJSON *input, char *result, size_t resu
     cron_get_timezone_abbrev(timezone_abbrev, sizeof(timezone_abbrev));
     (void)memory_get(NVS_KEY_BOOT_COUNT, boot_count, sizeof(boot_count));
     format_uptime(uptime_us, uptime_text, sizeof(uptime_text));
+    format_uptime_detail(uptime_us, uptime_detail, sizeof(uptime_detail));
 
     switch (scope) {
         case DIAG_SCOPE_RUNTIME:
             if (verbose) {
                 snprintf(result, result_len,
                          "Runtime diagnostics:\n"
-                         "- Uptime: %s (%llu us)\n"
+                         "- Uptime: %s (%s)\n"
                          "- Boot count: %s\n"
                          "- Version: %s",
                          uptime_text,
-                         (unsigned long long)((uptime_us > 0) ? uptime_us : 0),
+                         uptime_detail,
                          boot_count,
                          ota_get_version());
             } else {
@@ -325,7 +366,7 @@ bool tools_get_diagnostics_handler(const cJSON *input, char *result, size_t resu
             if (verbose) {
                 snprintf(result, result_len,
                          "Diagnostics:\n"
-                         "- Uptime: %s (%llu us)\n"
+                         "- Uptime: %s (%s)\n"
                          "- Heap: free=%lu min=%lu largest=%lu frag~%u%%\n"
                          "- Requests: %d/hr, %d/day\n"
                          "- Time sync: %s\n"
@@ -333,7 +374,7 @@ bool tools_get_diagnostics_handler(const cJSON *input, char *result, size_t resu
                          "- Boot count: %s\n"
                          "- Version: %s",
                          uptime_text,
-                         (unsigned long long)((uptime_us > 0) ? uptime_us : 0),
+                         uptime_detail,
                          (unsigned long)free_heap,
                          (unsigned long)min_heap,
                          (unsigned long)largest_heap,

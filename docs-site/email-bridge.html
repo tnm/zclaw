@@ -118,8 +118,19 @@ ZCLAW_EMAIL_BRIDGE_KEY=bridge-secret-token
         </section>
 
         <section class="section">
+          <h2>Testing Strategy</h2>
+          <p>Use both host tests and live bridge/device checks.</p>
+          <ul>
+            <li><strong>Host tests:</strong> run <code>./scripts/test.sh host</code>; this includes dedicated email tool tests (validation, request payloads, success parsing, and bridge error paths).</li>
+            <li><strong>Smoke test:</strong> provision bridge URL/key, then run one <code>email_send</code>, one <code>email_list</code>, and one <code>email_read</code> from web relay or Telegram.</li>
+            <li><strong>Runtime checks:</strong> use <code>/diag runtime verbose</code> and <code>/diag memory verbose</code> before/after test rounds to catch heap or stability regressions.</li>
+            <li><strong>Soak:</strong> run repeated list/read cycles for 30-60 minutes against a staging mailbox and monitor serial logs for resets, watchdog trips, or repeated HTTP failures.</li>
+          </ul>
+        </section>
+
+        <section class="section">
           <h2>Current Scope</h2>
-          <p>Current firmware support is Gmail-ready bridge plumbing plus tool handlers. Bridge implementation itself can be self-hosted (Cloud Run/Fly/Render/VPS) and layered with Gmail API next.</p>
+          <p>Current firmware support is Gmail-ready bridge plumbing plus tool handlers. Bridge implementation itself can be self-hosted (local/Fly/Render/VPS/etc) and layered with Gmail API next.</p>
         </section>
 
         <footer class="footer">

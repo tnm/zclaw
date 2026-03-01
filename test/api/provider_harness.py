@@ -146,6 +146,24 @@ TOOLS = [
         "input_schema": {"type": "object", "properties": {}},
     },
     {
+        "name": "get_diagnostics",
+        "description": "Get detailed runtime diagnostics. Optional scope: quick, runtime, memory, rates, time, all. Optional verbose=true for expanded output.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scope": {
+                    "type": "string",
+                    "enum": ["quick", "runtime", "memory", "rates", "time", "all"],
+                    "description": "Optional diagnostics scope (default quick)",
+                },
+                "verbose": {
+                    "type": "boolean",
+                    "description": "Include extra details (default false)",
+                },
+            },
+        },
+    },
+    {
         "name": "create_tool",
         "description": "Create a custom tool. Provide a short name (no spaces), brief description, and the action to perform when called.",
         "input_schema": {
@@ -191,6 +209,7 @@ MOCK_RESULTS = {
     "get_time": lambda inp: "2026-02-21 14:30:00 UTC",
     "get_version": lambda inp: "zclaw v2.0.4",
     "get_health": lambda inp: "Health: OK | Heap: 180000 free | Requests: 5/hr, 20/day | Time: synced",
+    "get_diagnostics": lambda inp: "Diagnostics: uptime=2h 14m | heap=180000/120000/90000 | req=5/hr,20/day",
     "create_tool": lambda inp: f"Created tool '{inp.get('name')}': {inp.get('description')}",
     "list_user_tools": lambda inp: "No user tools defined",
     "delete_user_tool": lambda inp: f"Deleted tool '{inp.get('name')}'",

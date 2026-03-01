@@ -137,6 +137,12 @@ static const tool_def_t s_tools[] = {
         .input_schema_json = "{\"type\":\"object\",\"properties\":{}}",
         .execute = tools_get_health_handler
     },
+    {
+        .name = "get_diagnostics",
+        .description = "Get detailed runtime diagnostics. Optional scope: quick, runtime, memory, rates, time, all. Optional verbose=true for expanded output.",
+        .input_schema_json = "{\"type\":\"object\",\"properties\":{\"scope\":{\"type\":\"string\",\"enum\":[\"quick\",\"runtime\",\"memory\",\"rates\",\"time\",\"all\"],\"description\":\"Optional diagnostics scope (default quick)\"},\"verbose\":{\"type\":\"boolean\",\"description\":\"Include extra details (default false)\"}}}",
+        .execute = tools_get_diagnostics_handler
+    },
     // User Tool Management
     {
         .name = "create_tool",

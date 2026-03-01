@@ -213,6 +213,7 @@ This relay approach does not add web UI code to ESP32 firmware binary.
 | `get_timezone` | Show current device timezone |
 | `get_version` | Get firmware version |
 | `get_health` | Get device health (heap, rate limits, time sync, version) |
+| `get_diagnostics` | Get scoped runtime diagnostics (`quick`, `runtime`, `memory`, `rates`, `time`, `all`) |
 | `create_tool` | Create a custom user-defined tool |
 | `list_user_tools` | List all user-created tools |
 | `delete_user_tool` | Delete a user-created tool |
@@ -224,6 +225,37 @@ Example tool call input:
 
 ```json
 {"sda_pin":8,"scl_pin":9,"frequency_hz":100000}
+```
+
+### Runtime Diagnostics (`get_diagnostics`)
+
+`get_diagnostics` is a deeper companion to `get_health`. It supports scoped checks plus an optional `verbose` mode.
+For Telegram control-plane checks without an LLM round trip, use `/diag [scope] [verbose]`.
+
+- `scope: quick` (default) — one-line snapshot for uptime, heap, rates, time sync, timezone, boot count, and version
+- `scope: runtime` — uptime, boot count, firmware version
+- `scope: memory` — free/min/largest heap plus fragmentation hint
+- `scope: rates` — request counters (`/hr`, `/day`)
+- `scope: time` — sync status and timezone
+- `scope: all` — multi-line summary across all categories
+- `verbose: true` — includes expanded details (for example raw uptime microseconds)
+
+Example tool call inputs:
+
+```json
+{}
+```
+
+```json
+{"scope":"memory","verbose":true}
+```
+
+Example natural-language prompts:
+
+```text
+Run diagnostics.
+Show full diagnostics.
+Check memory diagnostics in verbose mode.
 ```
 
 ### Timezone And Daily Schedules

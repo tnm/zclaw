@@ -64,10 +64,26 @@
               <tr><td>Memory</td><td><code>memory_set</code>, <code>memory_get</code>, <code>memory_list</code>, <code>memory_delete</code></td><td>Persistent user state (<code>u_*</code> keys).</td></tr>
               <tr><td>Schedules</td><td><code>cron_set</code>, <code>cron_list</code>, <code>cron_delete</code></td><td>Periodic, daily, and one-shot jobs.</td></tr>
               <tr><td>Clock</td><td><code>get_time</code>, <code>set_timezone</code>, <code>get_timezone</code></td><td>Timezone-aware schedule behavior.</td></tr>
-              <tr><td>System</td><td><code>get_version</code>, <code>get_health</code></td><td>Firmware + runtime diagnostics.</td></tr>
+              <tr><td>System</td><td><code>get_version</code>, <code>get_health</code>, <code>get_diagnostics</code></td><td>Firmware version plus quick/scoped runtime diagnostics.</td></tr>
               <tr><td>User tools</td><td><code>create_tool</code>, <code>list_user_tools</code>, <code>delete_user_tool</code></td><td>Natural-language macro layer.</td></tr>
             </tbody>
           </table>
+        </section>
+
+        <section class="section">
+          <h2>Runtime Diagnostics</h2>
+          <p><code>get_diagnostics</code> extends <code>get_health</code> with scoped checks and optional verbose output.</p>
+          <ul>
+            <li><code>scope: quick</code> (default) for one-line status.</li>
+            <li><code>scope: runtime</code> for uptime + boot/version context.</li>
+            <li><code>scope: memory</code> for free/min/largest heap and fragmentation hint.</li>
+            <li><code>scope: rates</code> for request counters.</li>
+            <li><code>scope: time</code> for sync + timezone.</li>
+            <li><code>scope: all</code> for a multi-line summary across categories.</li>
+            <li><code>verbose: true</code> includes expanded details.</li>
+          </ul>
+          <pre>{"scope":"memory","verbose":true}</pre>
+          <p class="inline-note">Natural-language prompts like “run diagnostics” or “show full diagnostics” should trigger this tool.</p>
         </section>
 
         <section class="section">
@@ -80,6 +96,7 @@
               <tr><td><code>/start</code></td><td>Shows local command help without calling the LLM.</td></tr>
               <tr><td><code>/help</code></td><td>Alias of <code>/start</code>; returns local command help without calling the LLM.</td></tr>
               <tr><td><code>/settings</code></td><td>Shows local bot status (including paused/active intake state).</td></tr>
+              <tr><td><code>/diag [scope] [verbose]</code></td><td>Runs local diagnostics without an LLM call (available even when intake is paused).</td></tr>
               <tr><td><code>/stop</code></td><td>Pauses inbound message processing (used to stop spam loops).</td></tr>
               <tr><td><code>/resume</code></td><td>Re-enables inbound message processing after <code>/stop</code>.</td></tr>
             </tbody>

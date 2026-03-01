@@ -363,6 +363,66 @@ TEST(help_and_settings_commands_bypass_llm)
     return 0;
 }
 
+TEST(diag_command_bypasses_llm_and_uses_tool)
+{
+    QueueHandle_t channel_q;
+    QueueHandle_t telegram_q;
+    char text[TELEGRAM_MAX_MSG_LEN];
+
+    reset_state();
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    telegram_q = xQueueCreate(4, sizeof(telegram_msg_t));
+    ASSERT(channel_q != NULL);
+    ASSERT(telegram_q != NULL);
+    agent_test_set_queues(channel_q, telegram_q);
+
+    agent_test_process_message("/diag memory verbose");
+    ASSERT(mock_llm_request_count() == 0);
+    ASSERT(mock_tools_execute_calls() == 1);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "mock tool executed");
+    ASSERT(recv_telegram_text(telegram_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "mock tool executed");
+
+    // /diag should remain available while paused.
+    agent_test_process_message("/stop");
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT(recv_telegram_text(telegram_q, text, sizeof(text)) == 1);
+    agent_test_process_message("/diag all");
+    ASSERT(mock_llm_request_count() == 0);
+    ASSERT(mock_tools_execute_calls() == 2);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "mock tool executed");
+    ASSERT(recv_telegram_text(telegram_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "mock tool executed");
+
+    vQueueDelete(channel_q);
+    vQueueDelete(telegram_q);
+    return 0;
+}
+
+TEST(diag_command_rejects_invalid_args)
+{
+    QueueHandle_t channel_q;
+    char text[CHANNEL_TX_BUF_SIZE];
+
+    reset_state();
+
+    channel_q = xQueueCreate(2, sizeof(channel_output_msg_t));
+    ASSERT(channel_q != NULL);
+    agent_test_set_queues(channel_q, NULL);
+
+    agent_test_process_message("/diag bananas");
+    ASSERT(mock_llm_request_count() == 0);
+    ASSERT(mock_tools_execute_calls() == 0);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT(strstr(text, "unknown /diag argument") != NULL);
+
+    vQueueDelete(channel_q);
+    return 0;
+}
+
 TEST(persona_phrases_route_through_llm)
 {
     QueueHandle_t channel_q;
@@ -634,6 +694,20 @@ int test_agent_all(void)
 
     printf("  help_and_settings_commands_bypass_llm... ");
     if (test_help_and_settings_commands_bypass_llm() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  diag_command_bypasses_llm_and_uses_tool... ");
+    if (test_diag_command_bypasses_llm_and_uses_tool() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  diag_command_rejects_invalid_args... ");
+    if (test_diag_command_rejects_invalid_args() == 0) {
         printf("OK\n");
     } else {
         failures++;

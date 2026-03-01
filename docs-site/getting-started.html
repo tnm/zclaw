@@ -74,8 +74,9 @@ bash &lt;(curl -fsSL https://raw.githubusercontent.com/tnm/zclaw/main/scripts/bo
           <ul>
             <li>Installer remembers answers in <code>~/.config/zclaw/install.env</code> (disable with <code>--no-remember</code>).</li>
             <li>Interactive flashing defaults to standard mode; encrypted flashing is opt-in with <code>--flash-mode secure</code>.</li>
+            <li>On Linux, dependency installs auto-detect <code>apt-get</code>, <code>pacman</code>, <code>dnf</code>, or <code>zypper</code>; unsupported distros fall back to manual package install guidance.</li>
           </ul>
-          <p class="inline-note">Want non-interactive install? Use <code>-y</code> and explicit no/yes flags: <code>./install.sh -y --build --flash --provision --no-qemu --no-cjson</code>.</p>
+          <p class="inline-note">Want non-interactive install? Use <code>-y</code> and explicit no/yes flags: <code>./install.sh -y --build --flash --provision --no-qemu --no-cjson</code>. Without <code>-y</code>, unanswered non-interactive prompts default to <code>no</code>.</p>
         </section>
 
         <section class="section">

@@ -62,6 +62,8 @@ FORCE_PROVISION=""
 FORCE_MONITOR=""
 FORCE_PORT=""
 FORCE_KILL_MONITOR=""
+LINUX_PKG_MANAGER=""
+LINUX_PKG_MANAGER_LABEL=""
 
 print_banner() {
     echo ""
@@ -391,6 +393,7 @@ ask_yes_no() {
     local answer
     local normalized
     local saved_default
+    local has_saved_default=false
 
     if [ -n "$forced_answer" ]; then
         normalized="$(normalize_yes_no "$forced_answer")"
@@ -415,6 +418,7 @@ ask_yes_no() {
         saved_default="$(get_preference "$pref_key")"
         if [ "$saved_default" = "y" ] || [ "$saved_default" = "n" ]; then
             default="$saved_default"
+            has_saved_default=true
             if [ "$auto_apply_saved" = "true" ]; then
                 if [ "$saved_default" = "y" ]; then
                     print_status "$prompt: yes (saved)"
@@ -436,7 +440,12 @@ ask_yes_no() {
         read -r -p "$prompt" answer
         answer="${answer:-$default}"
     else
-        answer="$default"
+        # In non-interactive mode, default to "no" unless a saved preference exists.
+        if [ "$has_saved_default" = true ]; then
+            answer="$default"
+        else
+            answer="n"
+        fi
     fi
     normalized="$(normalize_yes_no "$answer")"
     [ -n "$normalized" ] || normalized="n"
@@ -487,12 +496,89 @@ check_command() {
     command -v "$1" &> /dev/null
 }
 
+run_with_privileges() {
+    if check_command sudo; then
+        sudo "$@"
+    else
+        "$@"
+    fi
+}
+
 detect_os() {
     case "$(uname -s)" in
         Darwin*) echo "macos" ;;
         Linux*)  echo "linux" ;;
         *)       echo "unknown" ;;
     esac
+}
+
+detect_linux_package_manager() {
+    if check_command apt-get && apt-get --version >/dev/null 2>&1; then
+        echo "apt"
+    elif check_command pacman && pacman --version >/dev/null 2>&1; then
+        echo "pacman"
+    elif check_command dnf && dnf --version >/dev/null 2>&1; then
+        echo "dnf"
+    elif check_command zypper && zypper --version >/dev/null 2>&1; then
+        echo "zypper"
+    else
+        echo "unknown"
+    fi
+}
+
+linux_package_manager_label() {
+    case "$1" in
+        apt) echo "apt-get" ;;
+        pacman) echo "pacman" ;;
+        dnf) echo "dnf" ;;
+        zypper) echo "zypper" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+install_linux_packages() {
+    local purpose="$1"
+    shift
+
+    [ "$OS" = "linux" ] || return 0
+    [ "$#" -gt 0 ] || return 0
+
+    if [ "$LINUX_PKG_MANAGER" = "unknown" ] || [ -z "$LINUX_PKG_MANAGER" ]; then
+        print_warning "No supported Linux package manager detected; skipping $purpose install."
+        echo "Install manually: $*"
+        return 1
+    fi
+
+    case "$LINUX_PKG_MANAGER" in
+        apt)
+            echo "Installing $purpose via apt-get..."
+            if run_with_privileges apt-get update && run_with_privileges apt-get install -y "$@"; then
+                return 0
+            fi
+            ;;
+        pacman)
+            echo "Installing $purpose via pacman..."
+            if run_with_privileges pacman -Sy --noconfirm --needed "$@"; then
+                return 0
+            fi
+            ;;
+        dnf)
+            echo "Installing $purpose via dnf..."
+            if run_with_privileges dnf install -y "$@"; then
+                return 0
+            fi
+            ;;
+        zypper)
+            echo "Installing $purpose via zypper..."
+            if run_with_privileges zypper --non-interactive install "$@"; then
+                return 0
+            fi
+            ;;
+    esac
+
+    print_warning "Automatic $purpose install failed via $LINUX_PKG_MANAGER_LABEL."
+    echo "Install manually: $*"
+    return 1
 }
 
 idf_export_works() {
@@ -587,6 +673,16 @@ if [ "$OS" = "unknown" ]; then
 fi
 
 print_status "Detected OS: $OS"
+if [ "$OS" = "linux" ]; then
+    LINUX_PKG_MANAGER="$(detect_linux_package_manager)"
+    LINUX_PKG_MANAGER_LABEL="$(linux_package_manager_label "$LINUX_PKG_MANAGER")"
+    if [ "$LINUX_PKG_MANAGER" = "unknown" ]; then
+        print_warning "No supported package manager detected (tried apt-get, pacman, dnf, zypper)."
+        print_warning "System dependency installs will be skipped; install packages manually if needed."
+    else
+        print_status "Detected Linux package manager: $LINUX_PKG_MANAGER_LABEL"
+    fi
+fi
 if [ "$PREFS_LOADED" = true ]; then
     print_status "Loaded saved installer defaults from $PREFS_FILE"
 elif [ "$REMEMBER_PREFS" = false ]; then
@@ -638,11 +734,31 @@ else
             echo "Installing prerequisites via Homebrew..."
             brew install cmake ninja dfu-util python3 || true
         elif [ "$OS" = "linux" ]; then
-            echo "Installing prerequisites via apt..."
-            sudo apt-get update
-            sudo apt-get install -y git wget flex bison gperf python3 python3-pip \
-                python3-venv cmake ninja-build ccache libffi-dev libssl-dev \
-                dfu-util libusb-1.0-0
+            case "$LINUX_PKG_MANAGER" in
+                apt)
+                    IDF_PACKAGES=(git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0)
+                    ;;
+                pacman)
+                    IDF_PACKAGES=(git wget flex bison gperf python python-pip cmake ninja ccache libffi openssl dfu-util libusb)
+                    ;;
+                dnf)
+                    IDF_PACKAGES=(git wget flex bison gperf python3 python3-pip python3-virtualenv cmake ninja-build ccache libffi-devel openssl-devel dfu-util libusbx)
+                    ;;
+                zypper)
+                    IDF_PACKAGES=(git wget flex bison gperf python3 python3-pip python3-virtualenv cmake ninja ccache libffi-devel libopenssl-devel dfu-util libusb-1_0-0)
+                    ;;
+                *)
+                    IDF_PACKAGES=()
+                    ;;
+            esac
+
+            if [ "${#IDF_PACKAGES[@]}" -gt 0 ]; then
+                if ! install_linux_packages "ESP-IDF prerequisites" "${IDF_PACKAGES[@]}"; then
+                    print_warning "Continuing without auto-installed prerequisites; ESP-IDF install may fail if deps are missing."
+                fi
+            else
+                print_warning "Skipping Linux prerequisite install for ESP-IDF (unsupported package manager)."
+            fi
         fi
 
         # Clone ESP-IDF
@@ -699,8 +815,21 @@ else
             echo "Installing QEMU via Homebrew..."
             brew install qemu
         elif [ "$OS" = "linux" ]; then
-            echo "Installing QEMU via apt..."
-            sudo apt-get install -y qemu-system-misc
+            case "$LINUX_PKG_MANAGER" in
+                apt) QEMU_PACKAGE="qemu-system-misc" ;;
+                pacman) QEMU_PACKAGE="qemu-system-riscv" ;;
+                dnf) QEMU_PACKAGE="qemu-system-riscv" ;;
+                zypper) QEMU_PACKAGE="qemu-riscv" ;;
+                *) QEMU_PACKAGE="" ;;
+            esac
+
+            if [ -n "$QEMU_PACKAGE" ]; then
+                if ! install_linux_packages "QEMU" "$QEMU_PACKAGE"; then
+                    print_warning "QEMU install did not complete automatically."
+                fi
+            else
+                print_warning "Unsupported Linux package manager for QEMU install; install QEMU manually."
+            fi
         fi
 
         if check_command qemu-system-riscv32; then
@@ -736,10 +865,30 @@ else
             echo "Installing cJSON via Homebrew..."
             brew install cjson
         elif [ "$OS" = "linux" ]; then
-            echo "Installing cJSON via apt..."
-            sudo apt-get install -y libcjson-dev
+            case "$LINUX_PKG_MANAGER" in
+                apt) CJSON_PACKAGE="libcjson-dev" ;;
+                pacman) CJSON_PACKAGE="cjson" ;;
+                dnf) CJSON_PACKAGE="cjson-devel" ;;
+                zypper) CJSON_PACKAGE="libcjson-devel" ;;
+                *) CJSON_PACKAGE="" ;;
+            esac
+
+            if [ -n "$CJSON_PACKAGE" ]; then
+                if ! install_linux_packages "cJSON" "$CJSON_PACKAGE"; then
+                    print_warning "cJSON install did not complete automatically."
+                fi
+            else
+                print_warning "Unsupported Linux package manager for cJSON install; install cJSON manually."
+            fi
         fi
-        print_status "cJSON installed"
+
+        if [ -f "/opt/homebrew/include/cjson/cJSON.h" ] || \
+           [ -f "/usr/local/include/cjson/cJSON.h" ] || \
+           [ -f "/usr/include/cjson/cJSON.h" ]; then
+            print_status "cJSON installed"
+        else
+            print_warning "cJSON headers still not detected; host tests may be unavailable."
+        fi
     else
         print_warning "Skipping cJSON installation"
         print_warning "Host tests won't be available"

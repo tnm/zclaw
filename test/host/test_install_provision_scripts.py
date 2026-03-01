@@ -121,6 +121,141 @@ LAST_PORT=
         self.assertIn("Install QEMU for ESP32 emulation?: no", output)
         self.assertNotIn("Install QEMU for ESP32 emulation?: no (saved)", output)
 
+    def test_install_linux_uses_pacman_for_optional_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            home.mkdir(parents=True, exist_ok=True)
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            pkg_log = tmp / "pkg.log"
+
+            _write_executable(
+                bin_dir / "uname",
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'Linux'\n",
+            )
+            _write_executable(
+                bin_dir / "sudo",
+                "#!/bin/sh\n"
+                "\"$@\"\n",
+            )
+            _write_executable(
+                bin_dir / "apt-get",
+                "#!/bin/sh\n"
+                "exit 127\n",
+            )
+            _write_executable(
+                bin_dir / "pacman",
+                "#!/bin/sh\n"
+                "printf 'pacman %s\\n' \"$*\" >> \"$PKG_LOG\"\n"
+                "if [ \"$1\" = \"--version\" ]; then\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["XDG_CONFIG_HOME"] = str(home / ".config")
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["PKG_LOG"] = str(pkg_log)
+
+            proc = subprocess.run(
+                [
+                    str(INSTALL_SH),
+                    "--no-install-idf",
+                    "--no-repair-idf",
+                    "--qemu",
+                    "--cjson",
+                    "--no-build",
+                    "--no-flash",
+                    "--no-provision",
+                    "--no-monitor",
+                    "--no-remember",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            self.assertIn("Detected Linux package manager: pacman", output)
+            pkg_log_text = pkg_log.read_text(encoding="utf-8")
+            self.assertIn("--needed qemu-system-riscv", pkg_log_text)
+            if "cJSON not found" in output:
+                self.assertIn("--needed cjson", pkg_log_text)
+            else:
+                self.assertIn("cJSON library found", output)
+
+    def test_install_linux_unknown_package_manager_skips_optional_auto_install(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            home.mkdir(parents=True, exist_ok=True)
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+
+            _write_executable(
+                bin_dir / "uname",
+                "#!/bin/sh\n"
+                "printf '%s\\n' 'Linux'\n",
+            )
+            for pm in ("apt-get", "pacman", "dnf", "zypper"):
+                _write_executable(
+                    bin_dir / pm,
+                    "#!/bin/sh\n"
+                    "exit 127\n",
+                )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["XDG_CONFIG_HOME"] = str(home / ".config")
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+
+            proc = subprocess.run(
+                [
+                    str(INSTALL_SH),
+                    "--no-install-idf",
+                    "--no-repair-idf",
+                    "--qemu",
+                    "--cjson",
+                    "--no-build",
+                    "--no-flash",
+                    "--no-provision",
+                    "--no-monitor",
+                    "--no-remember",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            self.assertIn(
+                "No supported package manager detected (tried apt-get, pacman, dnf, zypper).",
+                output,
+            )
+            self.assertIn(
+                "Unsupported Linux package manager for QEMU install; install QEMU manually.",
+                output,
+            )
+            if "cJSON not found" in output:
+                self.assertIn(
+                    "Unsupported Linux package manager for cJSON install; install cJSON manually.",
+                    output,
+                )
+            else:
+                self.assertIn("cJSON library found", output)
+
     def test_install_idf_chip_list_includes_esp32(self) -> None:
         install_text = INSTALL_SH.read_text(encoding="utf-8")
         self.assertIn('ESP_IDF_CHIPS="esp32,esp32c3,esp32c6,esp32s3"', install_text)

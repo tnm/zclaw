@@ -23,6 +23,7 @@ Use the docs site for complete guides and reference.
 
 - [Full documentation](https://zclaw.dev)
 - [Use cases: useful + fun](https://zclaw.dev/use-cases.html)
+- [Email bridge guide](https://zclaw.dev/email-bridge.html)
 - [Changelog (web)](https://zclaw.dev/changelog.html)
 - [Complete README (verbatim)](https://zclaw.dev/reference/README_COMPLETE.md)
 
@@ -56,6 +57,7 @@ Non-interactive install:
 - For encrypted credentials in flash, use secure mode (`--flash-mode secure` in install flow, or `./scripts/flash-secure.sh` directly).
 - After flashing, provision WiFi + LLM credentials with `./scripts/provision.sh`.
 - You can re-run either `./scripts/provision.sh` or `./scripts/provision-dev.sh` at any time (no reflash required) to update runtime credentials: WiFi SSID/password, LLM backend/model/API key (or Ollama API URL), and Telegram token/chat ID allowlist.
+- Optional email tools (`email_send`, `email_list`, `email_read`) use an external bridge; provision `--email-bridge-url` and `--email-bridge-key` to enable.
 - Default LLM rate limits are `100/hour` and `1000/day`; change compile-time limits in `main/config.h` (`RATELIMIT_*`).
 - Quick validation path: run `./scripts/web-relay.sh` and send a test message to confirm the device can answer.
 - If serial port is busy, run `./scripts/release-port.sh` and retry.
@@ -69,6 +71,7 @@ Non-interactive install:
 - Timezone-aware schedules (`daily`, `periodic`, and one-shot `once`)
 - Built-in + user-defined tools
 - Runtime diagnostics via `get_diagnostics` (quick/runtime/memory/rates/time/all scopes)
+- Optional email bridge tools for Gmail-backed send/list/read flows
 - GPIO read/write control with guardrails (including bulk `gpio_read_all`)
 - Persistent memory across reboots
 - Persona options: `neutral`, `friendly`, `technical`, `witty`

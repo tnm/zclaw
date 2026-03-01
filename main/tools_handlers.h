@@ -38,6 +38,9 @@ bool tools_get_timezone_handler(const cJSON *input, char *result, size_t result_
 bool tools_get_version_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_get_health_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_get_diagnostics_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_email_send_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_email_list_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_email_read_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_create_tool_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_list_user_tools_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_delete_user_tool_handler(const cJSON *input, char *result, size_t result_len);

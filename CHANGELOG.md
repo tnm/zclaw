@@ -6,7 +6,14 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Added
+- Added bridge-backed email tool handlers: `email_send`, `email_list`, and `email_read`.
+- Added firmware bridge client plumbing for authenticated HTTPS calls to `/v1/email/send`, `/v1/email/list`, and `/v1/email/read`.
+- Added provisioning support for email bridge credentials via `--email-bridge-url` and `--email-bridge-key` (plus `provision-dev.sh` profile support).
+
+### Docs
+- Added a dedicated docs chapter/page for email bridge architecture and setup.
+- Updated README, Getting Started docs, and full reference docs with email bridge provisioning/tool guidance.
 
 ## [2.9.0] - 2026-03-01
 

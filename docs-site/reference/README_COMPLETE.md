@@ -100,6 +100,9 @@ It also points you to flash helpers that auto-detect serial port/chip and can sw
 It remembers your choices in `~/.config/zclaw/install.env` (disable with `--no-remember`).
 Saved QEMU/cJSON answers are auto-applied on future runs (override with `--qemu/--no-qemu` and `--cjson/--no-cjson`).
 Interactive `install.sh` flashing defaults to standard mode; flash encryption is only enabled with `--flash-mode secure`.
+On Linux, `install.sh` auto-detects `apt-get`, `pacman`, `dnf`, or `zypper` for dependency installs.
+If no supported manager is detected, it skips auto-install and prints manual package guidance.
+In non-interactive runs, unanswered prompts default to `no` unless you pass `-y` (or set explicit install flags/saved defaults).
 
 <details>
 <summary>You can also preseed install flags (click to expand)</summary>

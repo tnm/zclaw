@@ -57,7 +57,9 @@
           <h2>Current Stream</h2>
           <p><strong>Unreleased</strong></p>
           <ul>
-            <li>No unreleased changes yet.</li>
+            <li>Linux installer package support expanded: <code>install.sh</code> now auto-detects <code>apt-get</code>, <code>pacman</code>, <code>dnf</code>, and <code>zypper</code> instead of hard-coding <code>apt</code>.</li>
+            <li>Non-interactive installer prompts now default to <code>no</code> unless <code>-y</code>, explicit flags, or saved preferences are present.</li>
+            <li>Added host tests for Linux package-manager detection and unsupported-manager fallback in the install flow.</li>
           </ul>
           <p class="inline-note">Source of truth: <a href="https://github.com/tnm/zclaw/blob/main/CHANGELOG.md">CHANGELOG.md in repo</a>.</p>
         </section>

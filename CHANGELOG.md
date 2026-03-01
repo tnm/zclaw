@@ -6,7 +6,18 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
-- No unreleased changes yet.
+### Fixed
+- Linux installer dependency steps no longer hard-code `apt`; `install.sh` now detects and uses `apt-get`, `pacman`, `dnf`, or `zypper`.
+
+### Changed
+- Non-interactive installer prompts now default to `no` unless `-y`, explicit flags, or saved defaults are provided.
+- Linux optional dependency installs (`QEMU`, `cJSON`) now use distro-specific package names per detected package manager.
+
+### Docs
+- Updated README, full reference README, and Getting Started docs with Linux package-manager detection and non-interactive prompt behavior.
+
+### Tests
+- Added host install-script coverage for Linux package-manager detection (`pacman`) and unsupported-manager fallback behavior.
 
 ## [2.8.2] - 2026-03-01
 

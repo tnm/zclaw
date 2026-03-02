@@ -178,27 +178,13 @@ static void fail_fast_startup(const char *component, esp_err_t err)
     esp_restart();
 }
 
-// Boot loop protection
-static int get_boot_count(void)
-{
-    char buf[16];
-    if (memory_get(NVS_KEY_BOOT_COUNT, buf, sizeof(buf))) {
-        return atoi(buf);
-    }
-    return 0;
-}
-
-static void set_boot_count(int count)
-{
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d", count);
-    memory_set(NVS_KEY_BOOT_COUNT, buf);
-}
-
 static void clear_boot_count(void *arg)
 {
     (void)arg;
     vTaskDelay(pdMS_TO_TICKS(BOOT_SUCCESS_DELAY_MS));
+    UBaseType_t start_hwm_words = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI(TAG, "boot_ok stack high-water mark at start: %u words",
+             (unsigned)start_hwm_words);
 
     bool pending_before = ota_is_pending_verify();
     if (pending_before) {
@@ -210,8 +196,15 @@ static void clear_boot_count(void *arg)
         }
     }
 
-    set_boot_count(0);
-    ESP_LOGI(TAG, "Boot counter cleared - system stable");
+    esp_err_t boot_count_err = boot_guard_set_persisted_count(0);
+    if (boot_count_err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to clear boot counter: %s", esp_err_to_name(boot_count_err));
+    } else {
+        ESP_LOGI(TAG, "Boot counter cleared - system stable");
+    }
+    UBaseType_t end_hwm_words = uxTaskGetStackHighWaterMark(NULL);
+    ESP_LOGI(TAG, "boot_ok stack high-water mark before exit: %u words",
+             (unsigned)end_hwm_words);
     vTaskDelete(NULL);
 }
 
@@ -407,9 +400,12 @@ void app_main(void)
 
     // 4. Boot loop protection
 #if !CONFIG_ZCLAW_EMULATOR_MODE
-    int boot_count = get_boot_count();
+    int boot_count = boot_guard_get_persisted_count();
     int next_boot_count = boot_guard_next_count(boot_count);
-    set_boot_count(next_boot_count);
+    esp_err_t boot_count_err = boot_guard_set_persisted_count(next_boot_count);
+    if (boot_count_err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to persist boot counter: %s", esp_err_to_name(boot_count_err));
+    }
 
     if (boot_guard_should_enter_safe_mode(boot_count, MAX_BOOT_FAILURES)) {
         ESP_LOGE(TAG, "");
@@ -486,7 +482,7 @@ void app_main(void)
     }
 
     // 6. Start task to clear boot counter after stable period
-    if (xTaskCreate(clear_boot_count, "boot_ok", 2048, NULL, 1, NULL) != pdPASS) {
+    if (xTaskCreate(clear_boot_count, "boot_ok", BOOT_OK_TASK_STACK_SIZE, NULL, 1, NULL) != pdPASS) {
         ESP_LOGE(TAG, "Failed to create boot confirmation task");
     }
 

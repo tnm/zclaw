@@ -65,6 +65,7 @@ run_host_tests() {
         test_wifi_credentials.c \
         test_runner.c \
         mock_esp.c \
+        mock_memory.c \
         mock_llm.c \
         mock_user_tools.c \
         mock_freertos.c \

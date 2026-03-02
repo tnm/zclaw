@@ -61,6 +61,7 @@ run_host_tests() {
         test_telegram_poll_policy.c \
         test_agent.c \
         test_tools_gpio_policy.c \
+        test_tools_system_diag.c \
         test_llm_auth.c \
         test_wifi_credentials.c \
         test_runner.c \
@@ -70,6 +71,7 @@ run_host_tests() {
         mock_user_tools.c \
         mock_freertos.c \
         mock_tools.c \
+        mock_system_diag_deps.c \
         mock_ratelimit.c \
         ../../main/json_util.c \
         ../../main/cron_utils.c \
@@ -85,6 +87,7 @@ run_host_tests() {
         ../../main/telegram_poll_policy.c \
         ../../main/agent.c \
         ../../main/tools_gpio.c \
+        ../../main/tools_system.c \
         $CJSON_LDFLAGS 2>&1 || {
         echo "Note: Failed to compile tests. Install cJSON:"
         echo "  macOS:  brew install cjson"

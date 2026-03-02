@@ -13,6 +13,26 @@ menu "zclaw Configuration"
         help
             WiFi network password fallback. Leave empty to use NVS provisioning.
 
+    menu "BLE Provisioning"
+        depends on BT_ENABLED
+
+        config ZCLAW_BLE_PROVISIONING
+            bool "Enable BLE WiFi provisioning when device is unprovisioned"
+            default n
+            help
+                When enabled and no WiFi credentials exist in NVS, the device
+                starts BLE provisioning service so a phone app can submit WiFi
+                credentials without serial provisioning.
+
+        config ZCLAW_BLE_PROV_POP
+            string "BLE provisioning proof-of-possession (optional)"
+            default ""
+            depends on ZCLAW_BLE_PROVISIONING
+            help
+                Optional PoP for security-1 provisioning. Leave empty to use
+                security-0 (no PoP) for faster local setup.
+    endmenu
+
     config ZCLAW_CLAUDE_API_KEY
         string "LLM API Key (for testing only)"
         default ""

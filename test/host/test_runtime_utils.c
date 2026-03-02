@@ -11,6 +11,7 @@
 #include "security.h"
 #include "text_buffer.h"
 #include "boot_guard.h"
+#include "mock_memory.h"
 
 #define TEST(name) static int test_##name(void)
 #define ASSERT(cond) do { \
@@ -96,6 +97,26 @@ TEST(boot_guard_threshold)
     return 0;
 }
 
+TEST(boot_guard_persistence)
+{
+    mock_memory_reset();
+    ASSERT(boot_guard_get_persisted_count() == 0);
+
+    ASSERT(boot_guard_set_persisted_count(3) == ESP_OK);
+    ASSERT(boot_guard_get_persisted_count() == 3);
+
+    mock_memory_fail_next_set(ESP_FAIL);
+    ASSERT(boot_guard_set_persisted_count(0) == ESP_FAIL);
+    ASSERT(boot_guard_get_persisted_count() == 3);
+    return 0;
+}
+
+TEST(boot_ok_task_stack_config)
+{
+    ASSERT(BOOT_OK_TASK_STACK_SIZE >= 4096);
+    return 0;
+}
+
 TEST(telegram_channel_capacity_config)
 {
     ASSERT(TELEGRAM_MAX_MSG_LEN > CHANNEL_RX_BUF_SIZE);
@@ -139,6 +160,20 @@ int test_runtime_utils_all(void)
 
     printf("  boot_guard_threshold... ");
     if (test_boot_guard_threshold() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  boot_guard_persistence... ");
+    if (test_boot_guard_persistence() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  boot_ok_task_stack_config... ");
+    if (test_boot_ok_task_stack_config() == 0) {
         printf("OK\n");
     } else {
         failures++;

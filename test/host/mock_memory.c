@@ -17,6 +17,7 @@ typedef struct {
 } mock_memory_slot_t;
 
 static mock_memory_slot_t s_slots[MOCK_MEMORY_SLOTS];
+static esp_err_t s_next_set_err = ESP_OK;
 
 static int find_slot_index(const char *key)
 {
@@ -43,6 +44,7 @@ static int find_free_slot_index(void)
 void mock_memory_reset(void)
 {
     memset(s_slots, 0, sizeof(s_slots));
+    s_next_set_err = ESP_OK;
 }
 
 void mock_memory_set_kv(const char *key, const char *value)
@@ -67,6 +69,11 @@ void mock_memory_set_kv(const char *key, const char *value)
     s_slots[slot].value[sizeof(s_slots[slot].value) - 1] = '\0';
 }
 
+void mock_memory_fail_next_set(esp_err_t err)
+{
+    s_next_set_err = err;
+}
+
 esp_err_t memory_init(void)
 {
     mock_memory_reset();
@@ -75,6 +82,12 @@ esp_err_t memory_init(void)
 
 esp_err_t memory_set(const char *key, const char *value)
 {
+    if (s_next_set_err != ESP_OK) {
+        esp_err_t err = s_next_set_err;
+        s_next_set_err = ESP_OK;
+        return err;
+    }
+
     if (!key || !value || key[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }

@@ -22,5 +22,6 @@ Custom static docs site with a print-book visual style inspired by classic C ref
 - `local-dev.html` - local dev, provisioning profiles, and hacking loops
 - `use-cases.html` - useful and playful scenarios for on-device assistants
 - `changelog.html` - release history and upgrade notes
+- `email-bridge.html` - bridge-backed Gmail/email integration model and setup
 - `styles.css` - visual system and responsive layout
 - `app.js` - sidebar/nav behavior

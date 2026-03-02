@@ -103,6 +103,7 @@ Interactive `install.sh` flashing defaults to standard mode; flash encryption is
 On Linux, `install.sh` auto-detects `apt-get`, `pacman`, `dnf`, or `zypper` for dependency installs.
 If no supported manager is detected, it skips auto-install and prints manual package guidance.
 In non-interactive runs, unanswered prompts default to `no` unless you pass `-y` (or set explicit install flags/saved defaults).
+Optional email bridge credentials can be provisioned with `--email-bridge-url` and `--email-bridge-key`.
 
 <details>
 <summary>You can also preseed install flags (click to expand)</summary>
@@ -145,6 +146,7 @@ Direct chapter links:
 - [Tool Reference](docs-site/tools.html)
 - [Architecture](docs-site/architecture.html)
 - [Security](docs-site/security.html)
+- [Email Bridge](docs-site/email-bridge.html)
 - [Docs site README](docs-site/README.md)
 
 ### Telegram Setup
@@ -218,6 +220,9 @@ This relay approach does not add web UI code to ESP32 firmware binary.
 | `get_version` | Get firmware version |
 | `get_health` | Get device health (heap, rate limits, time sync, version) |
 | `get_diagnostics` | Get scoped runtime diagnostics (`quick`, `runtime`, `memory`, `rates`, `time`, `all`) |
+| `email_send` | Send an email through configured email bridge service |
+| `email_list` | List recent emails through configured email bridge service |
+| `email_read` | Read one email by id through configured email bridge service |
 | `create_tool` | Create a custom user-defined tool |
 | `list_user_tools` | List all user-created tools |
 | `delete_user_tool` | Delete a user-created tool |
@@ -261,6 +266,55 @@ Run diagnostics.
 Show full diagnostics.
 Check memory diagnostics in verbose mode.
 ```
+
+### Email Bridge Tools (`email_send`, `email_list`, `email_read`)
+
+Email features are bridge-backed (for example Gmail OAuth + API calls on a host/cloud service).
+Firmware stores only bridge URL/key and calls HTTPS bridge endpoints.
+
+- Provision with:
+  - `./scripts/provision.sh --email-bridge-url https://<bridge-host> --email-bridge-key <token>`
+  - or profile values `ZCLAW_EMAIL_BRIDGE_URL` / `ZCLAW_EMAIL_BRIDGE_KEY` via `provision-dev.sh`
+- Bridge endpoints expected by firmware:
+  - `POST /v1/email/send`
+  - `POST /v1/email/list`
+  - `POST /v1/email/read`
+
+Example tool call inputs:
+
+```json
+{"to":"you@example.com","subject":"ping","body":"hello from zclaw"}
+```
+
+```json
+{"max":5,"unread_only":true}
+```
+
+```json
+{"id":"18f7d2a4c0d7d321","max_chars":1200}
+```
+
+#### Testing Email Flows
+
+Host/unit coverage:
+
+- `./scripts/test.sh host` includes `Email Tool Tests` with a mocked bridge.
+- Cases include input validation, request payload forwarding, success formatting, and non-2xx/truncated bridge failures.
+
+Live device + bridge smoke path:
+
+1. Provision bridge settings:
+   - `./scripts/provision.sh --email-bridge-url https://<bridge-host> --email-bridge-key <token>`
+2. Run chat path (`./scripts/web-relay.sh` or Telegram) and exercise:
+   - `email_send` with a known recipient
+   - `email_list` for inbox/unread
+   - `email_read` for one returned id
+3. Confirm no runtime regressions while testing:
+   - run `/diag runtime verbose` and `/diag memory verbose` before/after repeated email tool calls.
+
+Soak recommendation:
+
+- Run repeated list/read rounds for 30-60 minutes against a staging mailbox and check monitor logs for heap drift, HTTP errors, or watchdog resets.
 
 ### Timezone And Daily Schedules
 

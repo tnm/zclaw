@@ -12,6 +12,8 @@
 #define NVS_KEY_TG_TOKEN     "tg_token"
 #define NVS_KEY_TG_CHAT_ID   "tg_chat_id"
 #define NVS_KEY_TG_CHAT_IDS  "tg_chat_ids"
+#define NVS_KEY_EMAIL_BRIDGE_URL "email_br_url"
+#define NVS_KEY_EMAIL_BRIDGE_KEY "email_br_key"
 #define NVS_KEY_TIMEZONE     "timezone"
 #define NVS_KEY_PERSONA      "persona"
 

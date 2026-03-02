@@ -861,6 +861,74 @@ LAST_PORT=
             self.assertIn('tg_chat_id,data,string,"7585013353"', captured_csv)
             self.assertIn('tg_chat_ids,data,string,"7585013353,-100222333444"', captured_csv)
 
+    def test_provision_writes_email_bridge_settings_when_provided(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = idf_dir / "components" / "nvs_flash" / "nvs_partition_generator" / "nvs_partition_gen.py"
+            parttool = idf_dir / "components" / "partition_table" / "parttool.py"
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            parttool.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            parttool.write_text("# parttool stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "python",
+                "#!/bin/sh\n"
+                "if [ \"$2\" = \"generate\" ]; then\n"
+                "  cp \"$3\" \"$CSV_CAPTURE\"\n"
+                "  : > \"$4\"\n"
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--yes",
+                    "--skip-api-check",
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    "HomeNetwork",
+                    "--pass",
+                    "password123",
+                    "--backend",
+                    "openai",
+                    "--api-key",
+                    "sk-test",
+                    "--email-bridge-url",
+                    "https://bridge.example.com",
+                    "--email-bridge-key",
+                    "bridge-secret-token",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            captured_csv = (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+            self.assertIn('email_br_url,data,string,"https://bridge.example.com"', captured_csv)
+            self.assertIn('email_br_key,data,string,"bridge-secret-token"', captured_csv)
+
     def test_provision_ollama_writes_normalized_api_url_without_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -1129,6 +1197,8 @@ LAST_PORT=
             self.assertIn("ZCLAW_WIFI_SSID", content)
             self.assertIn("ZCLAW_API_KEY", content)
             self.assertIn("ZCLAW_API_URL", content)
+            self.assertIn("ZCLAW_EMAIL_BRIDGE_URL", content)
+            self.assertIn("ZCLAW_EMAIL_BRIDGE_KEY", content)
 
     def test_provision_dev_forwards_profile_values(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -1291,6 +1361,60 @@ LAST_PORT=
             self.assertIn("--tg-chat-id", args_text)
             self.assertIn("7585013353,-100222333444", args_text)
             self.assertIn("Telegram chat ID(s):", output)
+
+    def test_provision_dev_forwards_email_bridge_values(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            args_file = tmp / "args.txt"
+            stub = tmp / "mock-provision.sh"
+
+            _write_executable(
+                stub,
+                "#!/bin/sh\n"
+                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+            )
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=openai",
+                        "ZCLAW_API_KEY=sk-test-1234567890",
+                        "ZCLAW_EMAIL_BRIDGE_URL=https://bridge.example.com",
+                        "ZCLAW_EMAIL_BRIDGE_KEY=bridge-secret-token",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["ARGS_FILE"] = str(args_file)
+            env["ZCLAW_PROVISION_SCRIPT"] = str(stub)
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                    "--show-config",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("--email-bridge-url", args_text)
+            self.assertIn("https://bridge.example.com", args_text)
+            self.assertIn("--email-bridge-key", args_text)
+            self.assertIn("bridge-secret-token", args_text)
+            self.assertIn("Email bridge URL: https://bridge.example.com", output)
+            self.assertNotIn("bridge-secret-token", output)
 
     def test_provision_dev_errors_when_key_missing(self) -> None:
         with tempfile.TemporaryDirectory() as td:

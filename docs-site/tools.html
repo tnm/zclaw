@@ -36,6 +36,7 @@
           <li><a href="local-dev.html">Chapter 6 · Local Dev &amp; Hacking</a></li>
           <li><a href="use-cases.html">Chapter 7 · Use Cases</a></li>
           <li><a href="changelog.html">Chapter 8 · Changelog</a></li>
+          <li><a href="email-bridge.html">Chapter 9 · Email Bridge</a></li>
         </ul>
       </aside>
 
@@ -65,9 +66,19 @@
               <tr><td>Schedules</td><td><code>cron_set</code>, <code>cron_list</code>, <code>cron_delete</code></td><td>Periodic, daily, and one-shot jobs.</td></tr>
               <tr><td>Clock</td><td><code>get_time</code>, <code>set_timezone</code>, <code>get_timezone</code></td><td>Timezone-aware schedule behavior.</td></tr>
               <tr><td>System</td><td><code>get_version</code>, <code>get_health</code>, <code>get_diagnostics</code></td><td>Firmware version plus quick/scoped runtime diagnostics.</td></tr>
+              <tr><td>Email bridge</td><td><code>email_send</code>, <code>email_list</code>, <code>email_read</code></td><td>Bridge-backed email operations (for example Gmail via external bridge).</td></tr>
               <tr><td>User tools</td><td><code>create_tool</code>, <code>list_user_tools</code>, <code>delete_user_tool</code></td><td>Natural-language macro layer.</td></tr>
             </tbody>
           </table>
+        </section>
+
+        <section class="section">
+          <h2>Email Bridge Tools</h2>
+          <p><code>email_send</code>, <code>email_list</code>, and <code>email_read</code> require bridge credentials provisioned in NVS (<code>email_bridge_url</code> and <code>email_bridge_key</code>).</p>
+          <pre>{"to":"you@example.com","subject":"ping","body":"hello from zclaw"}
+{"max":5,"unread_only":true}
+{"id":"18f7d2a4c0d7d321","max_chars":1200}</pre>
+          <p class="inline-note">See <a href="email-bridge.html">Chapter 9 · Email Bridge</a> for bridge endpoint contract and deployment model.</p>
         </section>
 
         <section class="section">

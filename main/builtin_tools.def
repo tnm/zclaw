@@ -101,6 +101,20 @@ TOOL_ENTRY("get_diagnostics",
            "{\"type\":\"object\",\"properties\":{\"scope\":{\"type\":\"string\",\"enum\":[\"quick\",\"runtime\",\"memory\",\"rates\",\"time\",\"all\"],\"description\":\"Optional diagnostics scope (default quick)\"},\"verbose\":{\"type\":\"boolean\",\"description\":\"Include extra details (default false)\"}}}",
            tools_get_diagnostics_handler)
 
+// Email Bridge
+TOOL_ENTRY("email_send",
+           "Send an email through the configured email bridge service. Requires bridge provisioning.",
+           "{\"type\":\"object\",\"properties\":{\"to\":{\"type\":\"string\",\"description\":\"Recipient email address\"},\"subject\":{\"type\":\"string\",\"description\":\"Email subject\"},\"body\":{\"type\":\"string\",\"description\":\"Plain-text email body\"}},\"required\":[\"to\",\"subject\",\"body\"]}",
+           tools_email_send_handler)
+TOOL_ENTRY("email_list",
+           "List recent emails through the configured email bridge service. Supports optional unread filtering.",
+           "{\"type\":\"object\",\"properties\":{\"label\":{\"type\":\"string\",\"description\":\"Optional mailbox label (default INBOX)\"},\"max\":{\"type\":\"integer\",\"description\":\"Max emails to return (1-20, default 5)\"},\"unread_only\":{\"type\":\"boolean\",\"description\":\"When true, return unread email only\"}}}",
+           tools_email_list_handler)
+TOOL_ENTRY("email_read",
+           "Read a specific email by message id through the configured email bridge service.",
+           "{\"type\":\"object\",\"properties\":{\"id\":{\"type\":\"string\",\"description\":\"Message identifier from email_list\"},\"max_chars\":{\"type\":\"integer\",\"description\":\"Optional max body characters to return (200-4000, default 1200)\"}},\"required\":[\"id\"]}",
+           tools_email_read_handler)
+
 // User Tool Management
 TOOL_ENTRY("create_tool",
            "Create a custom tool. Provide a short name (no spaces), brief description, and the action to perform when called.",

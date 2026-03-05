@@ -162,6 +162,48 @@ class ProviderHarnessTests(unittest.TestCase):
         request_json = payload["json"]
         self.assertEqual(request_json["messages"], messages)
 
+    def test_providers_dict_contains_volcengine(self) -> None:
+        self.assertIn("volcengine", provider_harness.PROVIDERS)
+        ve = provider_harness.PROVIDERS["volcengine"]
+        self.assertEqual(ve.name, "volcengine")
+        self.assertEqual(ve.wire_format, "openai")
+        self.assertIn("volces.com", ve.api_url)
+        self.assertEqual(ve.default_model, "doubao-1-5-pro-32k-250115")
+        self.assertEqual(ve.api_key_env, "VOLCENGINE_API_KEY")
+        self.assertEqual(ve.model_env, "VOLCENGINE_MODEL")
+
+    def test_volcengine_uses_max_tokens_not_max_completion_tokens(self) -> None:
+        # volcengine model name does not start with "gpt-5", so must use max_tokens
+        field, value = provider_harness._openai_like_max_tokens_field("doubao-1-5-pro-32k-250115")
+        self.assertEqual(field, "max_tokens")
+        self.assertEqual(value, 1024)
+
+    def test_call_api_volcengine_inserts_system_message_and_sends_to_correct_url(self) -> None:
+        provider = provider_harness.PROVIDERS["volcengine"]
+        messages = [{"role": "user", "content": "Hello"}]
+        payload: dict[str, Any] = {}
+
+        def fake_post(url: str, headers: dict[str, str], json: dict[str, Any], timeout: int) -> Mock:
+            payload["url"] = url
+            payload["headers"] = headers
+            payload["json"] = json
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"ok": True}
+            return response
+
+        with patch.object(provider_harness, "httpx", SimpleNamespace(post=fake_post)):
+            result = provider_harness.call_api(provider, messages, "test-ark-key", "doubao-1-5-pro-32k-250115", user_tools=[])
+
+        self.assertEqual(result, {"ok": True})
+        self.assertIn("volces.com", payload["url"])
+        self.assertEqual(payload["headers"]["Authorization"], "Bearer test-ark-key")
+        request_json = payload["json"]
+        self.assertEqual(request_json["messages"][0]["role"], "system")
+        self.assertEqual(request_json["messages"][1], {"role": "user", "content": "Hello"})
+        self.assertIn("max_tokens", request_json)
+        self.assertNotIn("max_completion_tokens", request_json)
+
 
 if __name__ == "__main__":
     unittest.main()

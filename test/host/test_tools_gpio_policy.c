@@ -31,6 +31,9 @@
 
 bool tools_gpio_test_pin_is_allowed(int pin, const char *csv, int min_pin, int max_pin);
 bool tools_gpio_test_pin_is_allowed_for_esp32_target(int pin, const char *csv, int min_pin, int max_pin);
+bool gpio_policy_test_runtime_input_pin_is_safe(int pin,
+                                                bool block_esp32_flash_pins,
+                                                bool require_valid_gpio);
 
 static void build_expected_range_read_all(char *buf, size_t buf_len)
 {
@@ -108,6 +111,15 @@ TEST(esp32_target_blocks_flash_pins)
     ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(10, "", 2, 12));
     ASSERT(!tools_gpio_test_pin_is_allowed_for_esp32_target(11, "", 2, 12));
     ASSERT(tools_gpio_test_pin_is_allowed_for_esp32_target(12, "", 2, 12));
+    return 0;
+}
+
+TEST(runtime_input_policy_blocks_esp32_flash_pins)
+{
+    gpio_test_reset_state();
+    ASSERT(gpio_policy_test_runtime_input_pin_is_safe(5, true, true));
+    ASSERT(!gpio_policy_test_runtime_input_pin_is_safe(9, true, true));
+    ASSERT(gpio_policy_test_runtime_input_pin_is_safe(12, true, true));
     return 0;
 }
 
@@ -248,6 +260,13 @@ int test_tools_gpio_policy_all(void)
 
     printf("  esp32_target_blocks_flash_pins... ");
     if (test_esp32_target_blocks_flash_pins() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  runtime_input_policy_blocks_esp32_flash_pins... ");
+    if (test_runtime_input_policy_blocks_esp32_flash_pins() == 0) {
         printf("OK\n");
     } else {
         failures++;

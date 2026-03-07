@@ -12,6 +12,7 @@
 #include "nvs_keys.h"
 #include "messages.h"
 #include "wifi_credentials.h"
+#include "gpio_policy.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -247,6 +248,11 @@ static void wifi_event_handler(void *arg, esp_event_base_t event_base,
 // Check factory reset button
 static bool check_factory_reset(void)
 {
+    if (!gpio_policy_runtime_input_pin_is_safe(FACTORY_RESET_PIN)) {
+        ESP_LOGW(TAG, "Skipping factory reset button check: pin %d is unsafe on this target", FACTORY_RESET_PIN);
+        return false;
+    }
+
     gpio_reset_pin(FACTORY_RESET_PIN);
     gpio_set_direction(FACTORY_RESET_PIN, GPIO_MODE_INPUT);
     gpio_set_pull_mode(FACTORY_RESET_PIN, GPIO_PULLUP_ONLY);

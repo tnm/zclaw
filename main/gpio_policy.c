@@ -91,6 +91,15 @@ bool gpio_policy_pin_is_allowed(int pin)
 #endif
 }
 
+bool gpio_policy_runtime_input_pin_is_safe(int pin)
+{
+#if defined(CONFIG_IDF_TARGET_ESP32)
+    return pin_is_allowed_impl(pin, NULL, 0, INT_MAX, true, true);
+#else
+    return pin_is_allowed_impl(pin, NULL, 0, INT_MAX, false, true);
+#endif
+}
+
 bool gpio_policy_pin_forbidden_hint(int pin, char *result, size_t result_len)
 {
 #if defined(CONFIG_IDF_TARGET_ESP32)
@@ -118,5 +127,12 @@ bool gpio_policy_test_pin_is_allowed(int pin,
                                      bool require_valid_gpio)
 {
     return pin_is_allowed_impl(pin, csv, min_pin, max_pin, block_esp32_flash_pins, require_valid_gpio);
+}
+
+bool gpio_policy_test_runtime_input_pin_is_safe(int pin,
+                                                bool block_esp32_flash_pins,
+                                                bool require_valid_gpio)
+{
+    return pin_is_allowed_impl(pin, NULL, 0, INT_MAX, block_esp32_flash_pins, require_valid_gpio);
 }
 #endif

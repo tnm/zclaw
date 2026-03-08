@@ -24,4 +24,9 @@ typedef int esp_err_t;
 #define ESP_LOGI(tag, fmt, ...) printf("[I][%s] " fmt "\n", tag, ##__VA_ARGS__)
 #define ESP_LOGD(tag, fmt, ...) /* debug off */
 
+// Mock state helpers for host tests.
+void mock_esp_reset(void);
+void mock_esp_set_heap_state(size_t free_heap, size_t min_heap, size_t largest_block);
+void mock_esp_set_wifi_ap_info(esp_err_t err, int rssi);
+
 #endif // MOCK_ESP_H

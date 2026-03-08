@@ -8,6 +8,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 - No unreleased changes yet.
 
+## [2.11.2] - 2026-03-07
+
+### Changed
+- Split command parsing and persona/system-prompt helpers out of `main/agent.c` into focused helper modules.
+- Split Telegram target-routing and HTTP diagnostics helpers out of `main/telegram.c` to keep the runtime logic smaller and easier to maintain.
+
+### Tests
+- Added direct host coverage for the extracted Telegram HTTP diagnostics helpers.
+
 ## [2.11.1] - 2026-03-07
 
 ### Fixed

@@ -2,6 +2,8 @@ idf_component_register(
     SRCS
         "main.c"
         "agent.c"
+        "agent_commands.c"
+        "agent_prompt.c"
         "channel.c"
         "llm.c"
         "llm_auth.c"
@@ -18,7 +20,9 @@ idf_component_register(
         "memory.c"
         "json_util.c"
         "telegram.c"
+        "telegram_http_diag.c"
         "telegram_poll_policy.c"
+        "telegram_targets.c"
         "telegram_chat_ids.c"
         "telegram_token.c"
         "cron.c"

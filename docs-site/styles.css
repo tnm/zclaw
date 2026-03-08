@@ -648,12 +648,19 @@ kbd {
     animation: none !important;
     transition: none !important;
   }
+  .chapter-list li {
+    opacity: 1 !important;
+  }
 }
 
 @media (max-width: 980px) {
   .page {
     grid-template-columns: 1fr;
     position: relative;
+  }
+
+  .sidebar-mobile-hidden {
+    display: none !important;
   }
 
   .sidebar {

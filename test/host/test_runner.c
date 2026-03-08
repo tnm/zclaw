@@ -16,6 +16,7 @@ extern int test_telegram_update_all(void);
 extern int test_telegram_token_all(void);
 extern int test_telegram_chat_ids_all(void);
 extern int test_telegram_poll_policy_all(void);
+extern int test_telegram_http_diag_all(void);
 extern int test_agent_all(void);
 extern int test_tools_gpio_policy_all(void);
 extern int test_tools_i2c_policy_all(void);
@@ -42,6 +43,7 @@ int main(int argc, char *argv[])
     failures += test_telegram_token_all();
     failures += test_telegram_chat_ids_all();
     failures += test_telegram_poll_policy_all();
+    failures += test_telegram_http_diag_all();
     failures += test_agent_all();
     failures += test_tools_gpio_policy_all();
     failures += test_tools_i2c_policy_all();

@@ -98,6 +98,7 @@ class QemuLiveLlmBridgeTests(unittest.TestCase):
         )
         self.assertEqual(resolve_provider("auto", request), "openai")
         self.assertEqual(resolve_provider("anthropic", request), "anthropic")
+        self.assertEqual(resolve_provider("volcengine", request), "volcengine")
 
 
 if __name__ == "__main__":

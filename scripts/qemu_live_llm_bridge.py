@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run QEMU and proxy emulator LLM requests to Anthropic or OpenAI from host."""
+"""Run QEMU and proxy emulator LLM requests to Anthropic, OpenAI, or Volcengine from host."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ REQ_PREFIX = "__zclaw_llm_req__:"
 RESP_PREFIX = "__zclaw_llm_resp__:"
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+VOLCENGINE_API_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
 REQ_PREFIX_B = REQ_PREFIX.encode("utf-8")
 RESP_PREFIX_B = RESP_PREFIX.encode("utf-8")
 
@@ -99,6 +100,35 @@ def call_openai(request_json: str, timeout_s: int) -> str:
         return build_error_payload(str(exc))
 
 
+def call_volcengine(request_json: str, timeout_s: int) -> str:
+    api_key = os.environ.get("VOLCENGINE_API_KEY", "")
+    if not api_key:
+        return build_error_payload("VOLCENGINE_API_KEY is not set")
+
+    api_url = os.environ.get("VOLCENGINE_API_URL", VOLCENGINE_API_URL)
+    req = urllib.request.Request(
+        api_url,
+        data=request_json.encode("utf-8"),
+        headers={
+            "authorization": f"Bearer {api_key}",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return compact_json_or_error(body)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        if body:
+            return compact_json_or_error(body)
+        return build_error_payload(f"HTTP {exc.code}")
+    except Exception as exc:  # pragma: no cover - network/runtime dependent
+        return build_error_payload(str(exc))
+
+
 def detect_provider_from_request(request_json: str) -> str:
     try:
         payload = json.loads(request_json)
@@ -138,6 +168,8 @@ def resolve_provider(provider: str, request_json: str) -> str:
 def call_provider(provider: str, request_json: str, timeout_s: int) -> str:
     if provider == "openai":
         return call_openai(request_json, timeout_s)
+    if provider == "volcengine":
+        return call_volcengine(request_json, timeout_s)
     return call_anthropic(request_json, timeout_s)
 
 
@@ -314,9 +346,9 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="QEMU live LLM bridge for zclaw emulator")
     parser.add_argument(
         "--provider",
-        choices=("auto", "anthropic", "openai"),
+        choices=("auto", "anthropic", "openai", "volcengine"),
         default="auto",
-        help="Host API provider: auto-detect from request format (default), anthropic, or openai",
+        help="Host API provider: auto-detect from request format (default), anthropic, openai, or volcengine",
     )
     parser.add_argument(
         "--api-timeout",
@@ -356,7 +388,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if args.provider == "auto":
-        provider_note = "auto-detect (anthropic/openai)"
+        provider_note = "auto-detect (anthropic/openai/volcengine)"
     else:
         provider_note = args.provider
     write_host_line(sys.stdout, f"[qemu-live-llm] Bridge active (provider: {provider_note}).")

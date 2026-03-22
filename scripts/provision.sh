@@ -352,6 +352,7 @@ default_model_for_backend() {
         openai) echo "gpt-5.4" ;;
         openrouter) echo "openrouter/auto" ;;
         ollama) echo "qwen3:8b" ;;
+        volcengine) echo "doubao-1-5-pro-32k-250115" ;;
         *) echo "claude-sonnet-4-6" ;;
     esac
 }
@@ -429,7 +430,7 @@ prompt_for_model() {
 
 validate_backend() {
     case "$1" in
-        anthropic|openai|openrouter|ollama) return 0 ;;
+        anthropic|openai|openrouter|ollama|volcengine) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -673,6 +674,74 @@ verify_openai_api_key() {
     fi
 
     echo "OpenAI API check failed (HTTP $http_code)."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$response_file" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+p = Path(sys.argv[1])
+try:
+    data = json.loads(p.read_text(encoding="utf-8"))
+except Exception:
+    print("Response preview: " + p.read_text(encoding="utf-8", errors="ignore")[:200])
+    raise SystemExit(0)
+
+msg = ""
+if isinstance(data, dict):
+    if isinstance(data.get("error"), dict):
+        msg = data["error"].get("message") or data["error"].get("type") or ""
+    elif isinstance(data.get("error"), str):
+        msg = data["error"]
+if msg:
+    print("API said: " + msg)
+PY
+    else
+        echo "Response preview: $(head -c 200 "$response_file")"
+    fi
+
+    rm -f "$response_file"
+    return 1
+}
+
+verify_volcengine_api_key() {
+    local api_key="$1"
+    local model="$2"
+    local api_url_override="$3"
+    local api_url="${api_url_override:-https://ark.cn-beijing.volces.com/api/v3/chat/completions}"
+    local response_file
+    local http_code
+    local req_body
+
+    if ! command -v curl >/dev/null 2>&1; then
+        echo "Warning: curl not found; skipping Volcengine API check."
+        return 2
+    fi
+
+    req_body=$(cat <<EOF
+{"model":"$model","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}
+EOF
+)
+
+    response_file="$(mktemp -t zclaw-volcengine-check.XXXXXX 2>/dev/null || mktemp)"
+    if ! http_code="$(curl -sS -o "$response_file" -w "%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -H "Authorization: Bearer $api_key" \
+        -d "$req_body" \
+        "$api_url")"; then
+        rm -f "$response_file"
+        echo "Volcengine API check failed: network/transport error."
+        return 1
+    fi
+
+    if [ "$http_code" = "200" ]; then
+        rm -f "$response_file"
+        echo "Volcengine API check passed."
+        return 0
+    fi
+
+    echo "Volcengine API check failed (HTTP $http_code)."
     if command -v python3 >/dev/null 2>&1; then
         python3 - "$response_file" <<'PY'
 import json
@@ -1010,13 +1079,13 @@ if [ -z "$BACKEND" ]; then
     if [ "$ASSUME_YES" = true ]; then
         BACKEND="openai"
     else
-        read -r -p "LLM provider [openai/anthropic/openrouter/ollama] (default: openai): " BACKEND
+        read -r -p "LLM provider [openai/anthropic/openrouter/ollama/volcengine] (default: openai): " BACKEND
         BACKEND="${BACKEND:-openai}"
     fi
 fi
 
 if ! validate_backend "$BACKEND"; then
-    echo "Error: invalid backend '$BACKEND' (expected anthropic|openai|openrouter|ollama)"
+    echo "Error: invalid backend '$BACKEND' (expected anthropic|openai|openrouter|ollama|volcengine)"
     exit 1
 fi
 
@@ -1076,6 +1145,10 @@ if [ "$VERIFY_API_KEY" = true ]; then
         ollama)
             VERIFY_LABEL="Ollama endpoint"
             VERIFY_FN="verify_ollama_endpoint"
+            ;;
+        volcengine)
+            VERIFY_LABEL="Volcengine"
+            VERIFY_FN="verify_volcengine_api_key"
             ;;
     esac
 

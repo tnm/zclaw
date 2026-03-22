@@ -1,4 +1,5 @@
 #include "tools_handlers.h"
+#include "tools_common.h"
 #include "config.h"
 #include "gpio_policy.h"
 #include "driver/gpio.h"
@@ -56,15 +57,7 @@ bool tools_gpio_write_handler(const cJSON *input, char *result, size_t result_le
     int pin = pin_json->valueint;
     int state = state_json->valueint;
 
-    if (!gpio_policy_pin_is_allowed(pin)) {
-        if (gpio_policy_pin_forbidden_hint(pin, result, result_len)) {
-            return false;
-        }
-        if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
-            snprintf(result, result_len, "Error: pin %d is not in allowed list", pin);
-        } else {
-            snprintf(result, result_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
-        }
+    if (!tools_validate_allowed_gpio_pin(pin, NULL, result, result_len)) {
         return false;
     }
 
@@ -89,15 +82,7 @@ bool tools_gpio_read_handler(const cJSON *input, char *result, size_t result_len
 
     int pin = pin_json->valueint;
 
-    if (!gpio_policy_pin_is_allowed(pin)) {
-        if (gpio_policy_pin_forbidden_hint(pin, result, result_len)) {
-            return false;
-        }
-        if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
-            snprintf(result, result_len, "Error: pin %d is not in allowed list", pin);
-        } else {
-            snprintf(result, result_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
-        }
+    if (!tools_validate_allowed_gpio_pin(pin, NULL, result, result_len)) {
         return false;
     }
 

@@ -1,5 +1,6 @@
 #include "tools_common.h"
 #include "config.h"
+#include "gpio_policy.h"
 #include "memory_keys.h"
 #include <string.h>
 #include <stdio.h>
@@ -64,6 +65,13 @@ bool tools_validate_user_memory_key(const char *key, char *error, size_t error_l
     return true;
 }
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wformat-nonliteral"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#endif
 bool tools_append_fmt(char **ptr, size_t *remaining, const char *fmt, ...)
 {
     if (!ptr || !*ptr || !remaining || *remaining == 0 || !fmt) {
@@ -89,6 +97,11 @@ bool tools_append_fmt(char **ptr, size_t *remaining, const char *fmt, ...)
     *remaining -= (size_t)written;
     return true;
 }
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 bool tools_validate_https_url(const char *url, char *error, size_t error_len)
 {
@@ -109,4 +122,29 @@ bool tools_validate_https_url(const char *url, char *error, size_t error_len)
     }
 
     return true;
+}
+
+bool tools_validate_allowed_gpio_pin(int pin, const char *field_name, char *error, size_t error_len)
+{
+    if (gpio_policy_pin_is_allowed(pin)) {
+        return true;
+    }
+
+    if (gpio_policy_pin_forbidden_hint(pin, error, error_len)) {
+        return false;
+    }
+
+    if (GPIO_ALLOWED_PINS_CSV[0] != '\0') {
+        if (field_name && field_name[0] != '\0') {
+            snprintf(error, error_len, "Error: %s pin %d not allowed", field_name, pin);
+        } else {
+            snprintf(error, error_len, "Error: pin %d not allowed", pin);
+        }
+    } else if (field_name && field_name[0] != '\0') {
+        snprintf(error, error_len, "Error: %s pin must be %d-%d", field_name, GPIO_MIN_PIN, GPIO_MAX_PIN);
+    } else {
+        snprintf(error, error_len, "Error: pin must be %d-%d", GPIO_MIN_PIN, GPIO_MAX_PIN);
+    }
+
+    return false;
 }

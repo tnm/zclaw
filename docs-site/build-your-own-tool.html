@@ -132,6 +132,7 @@ Agent: Creates a tool using the remembered lighting pin instead of asking you to
         <section class="section">
           <h2>Approach 2: Firmware Tool (C Code + Reflash)</h2>
           <p>Use this path when you need behavior that is not a composition of existing tools (new I/O paths, strict schemas, deterministic validation, special error handling).</p>
+          <p class="inline-note">Example boundary: a user tool can compose <code>i2c_write_read</code> or <code>dht_read</code>, but it cannot invent a new bus or timing-sensitive sensor driver. That belongs in firmware.</p>
           <ol>
             <li>Implement handler logic in <code>main/tools_*.c</code> with signature <code>bool handler(const cJSON *input, char *result, size_t result_len)</code>.</li>
             <li>Declare it in <code>main/tools_handlers.h</code>.</li>

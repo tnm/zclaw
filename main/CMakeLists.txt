@@ -14,6 +14,7 @@ idf_component_register(
         "gpio_policy.c"
         "tools_gpio.c"
         "tools_i2c.c"
+        "tools_dht.c"
         "tools_memory.c"
         "tools_persona.c"
         "tools_cron.c"

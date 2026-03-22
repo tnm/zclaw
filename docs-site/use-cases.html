@@ -73,6 +73,7 @@
             <tbody>
               <tr><td>Lab bring-up checklist</td><td>Runs a staged startup script: set GPIO rails, wait, verify sensor pins, report health.</td><td>One chat command can control real sequencing and report exact current state.</td></tr>
               <tr><td>Greenhouse helper</td><td>Schedules watering, stores moisture notes, toggles relays, and reports timing.</td><td>State and schedules persist locally; no separate home-automation hub required.</td></tr>
+              <tr><td>Sensor bench console</td><td>Reads DHT probes, scans I2C buses, and performs register reads/writes while you are standing at the hardware.</td><td>You can discover wiring mistakes and validate sensors from the same device that is attached to the bus.</td></tr>
               <tr><td>Workshop routine assistant</td><td>Starts timed reminders for recurring bench tasks and equipment checks.</td><td>Reminders and actions are tied to the same device that controls outputs.</td></tr>
               <tr><td>Field test rig assistant</td><td>Creates one-shot test routines, logs outcomes in memory keys, and replays known-good actions.</td><td>Useful when you need repeatable actions from natural language while standing at hardware.</td></tr>
               <tr><td>Power/load cycling</td><td>Switches circuits with delay windows and periodic checks, then summarizes what happened.</td><td>Low-friction orchestration where command, execution, and telemetry live together.</td></tr>
@@ -95,7 +96,7 @@
           <h2>Unique Because It Runs Here</h2>
           <p>zclaw is interesting because it is constrained and embodied:</p>
           <ul>
-            <li><strong>Embodied:</strong> it can immediately reach hardware through GPIO/I2C. It can go around with you.</li>
+            <li><strong>Embodied:</strong> it can immediately reach hardware through GPIO, DHT sensor reads, and generic I2C bus transactions. It can go around with you.</li>
             <li><strong>Stateful:</strong> memory keys and persona stay on the device</li>
             <li><strong>Schedulable:</strong> natural language can produce persistent timed behavior.</li>
             <li><strong>Inspectable:</strong> logs and built-in health/version tools make behavior debuggable.</li>
@@ -125,6 +126,9 @@
 
 "Create a tool called bench_shutdown that powers down relay pins in order."
 "Run bench_shutdown."
+
+"Scan the I2C bus on SDA 8, SCL 9."
+"Read the DHT22 sensor on GPIO 5."
 
 "At 8:15 every day, remind me to check the plants."
 "Blink the status LED."</pre>

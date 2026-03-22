@@ -44,6 +44,14 @@ static bool has_tool(const char *name)
     return false;
 }
 
+static bool schema_has_object_properties(const char *schema)
+{
+    if (!schema || strstr(schema, "\"type\":\"object\"") == NULL) {
+        return true;
+    }
+    return strstr(schema, "\"properties\":") != NULL;
+}
+
 TEST(registry_not_empty)
 {
     ASSERT((sizeof(s_builtin_tools) / sizeof(s_builtin_tools[0])) > 0);
@@ -63,6 +71,7 @@ TEST(entries_have_valid_fields_and_unique_names)
         ASSERT(s_builtin_tools[i].description[0] != '\0');
         ASSERT(s_builtin_tools[i].schema != NULL);
         ASSERT(s_builtin_tools[i].schema[0] == '{');
+        ASSERT(schema_has_object_properties(s_builtin_tools[i].schema));
 
         for (j = i + 1; j < count; j++) {
             ASSERT(strcmp(s_builtin_tools[i].name, s_builtin_tools[j].name) != 0);
@@ -76,6 +85,10 @@ TEST(required_core_tools_exist)
 {
     static const char *required[] = {
         "gpio_write",
+        "i2c_write",
+        "i2c_read",
+        "i2c_write_read",
+        "dht_read",
         "memory_set",
         "cron_set",
         "get_diagnostics",

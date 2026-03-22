@@ -17,7 +17,7 @@ except ModuleNotFoundError:
 
 SYSTEM_PROMPT = """You are zclaw, an AI agent running on an ESP32 microcontroller. \
 You have 400KB of RAM and run on bare metal with FreeRTOS. \
-You can control GPIO pins, store persistent memories, and set schedules. \
+You can control GPIO pins, talk to I2C devices, read supported sensors, store persistent memories, and set schedules. \
 Be concise - you're on a tiny chip. \
 Use your tools to control hardware, remember things, and automate tasks. \
 Users can create custom tools with create_tool. When you call a custom tool, \
@@ -57,6 +57,78 @@ TOOLS = [
                 "milliseconds": {"type": "integer", "description": "Time to wait in ms (max 60000)"},
             },
             "required": ["milliseconds"],
+        },
+    },
+    {
+        "name": "i2c_scan",
+        "description": "Scan I2C bus for responding 7-bit addresses on selected SDA/SCL pins.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
+                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
+                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+            },
+            "required": ["sda_pin", "scl_pin"],
+        },
+    },
+    {
+        "name": "i2c_write",
+        "description": "Write space-separated hex bytes to a 7-bit I2C address on selected SDA/SCL pins.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
+                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
+                "address": {"type": "integer", "description": "7-bit I2C device address"},
+                "data_hex": {"type": "string", "description": "Space-separated hex bytes to write"},
+                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+            },
+            "required": ["sda_pin", "scl_pin", "address", "data_hex"],
+        },
+    },
+    {
+        "name": "i2c_read",
+        "description": "Read bytes from a 7-bit I2C address on selected SDA/SCL pins.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
+                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
+                "address": {"type": "integer", "description": "7-bit I2C device address"},
+                "read_length": {"type": "integer", "description": "Number of bytes to read"},
+                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+            },
+            "required": ["sda_pin", "scl_pin", "address", "read_length"],
+        },
+    },
+    {
+        "name": "i2c_write_read",
+        "description": "Write bytes, then read bytes from the same 7-bit I2C address on selected SDA/SCL pins.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
+                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
+                "address": {"type": "integer", "description": "7-bit I2C device address"},
+                "write_hex": {"type": "string", "description": "Space-separated hex bytes to write first"},
+                "read_length": {"type": "integer", "description": "Number of bytes to read after the write"},
+                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+            },
+            "required": ["sda_pin", "scl_pin", "address", "write_hex", "read_length"],
+        },
+    },
+    {
+        "name": "dht_read",
+        "description": "Read a DHT11 or DHT22 temperature/humidity sensor on one GPIO pin. DHT is not I2C.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pin": {"type": "integer", "description": "GPIO pin connected to the DHT data line"},
+                "model": {"type": "string", "enum": ["dht11", "dht22"], "description": "DHT sensor model"},
+                "retries": {"type": "integer", "description": "Optional retry count"},
+            },
+            "required": ["pin", "model"],
         },
     },
     {
@@ -199,6 +271,11 @@ MOCK_RESULTS = {
     "gpio_write": lambda inp: f"Pin {inp.get('pin')} -> {'HIGH' if inp.get('state') else 'LOW'}",
     "gpio_read": lambda inp: f"Pin {inp.get('pin')} = HIGH",
     "delay": lambda inp: f"Waited {inp.get('milliseconds')} ms",
+    "i2c_scan": lambda inp: f"No I2C devices found on SDA={inp.get('sda_pin')} SCL={inp.get('scl_pin')} @ {inp.get('frequency_hz', 100000)} Hz",
+    "i2c_write": lambda inp: f"Wrote bytes to I2C address {inp.get('address')}",
+    "i2c_read": lambda inp: f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')}: 0x00",
+    "i2c_write_read": lambda inp: f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')} after writing bytes: 0x00",
+    "dht_read": lambda inp: f"{inp.get('model', 'dht11').upper()} on GPIO {inp.get('pin')}: humidity=55.0%, temperature=24.0 C",
     "memory_set": lambda inp: f"Saved: {inp.get('key')} = {inp.get('value')}",
     "memory_get": lambda inp: f"{inp.get('key')} = example_value",
     "memory_list": lambda inp: "Stored keys: user_name, last_water",

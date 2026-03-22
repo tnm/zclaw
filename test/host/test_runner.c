@@ -20,6 +20,7 @@ extern int test_telegram_http_diag_all(void);
 extern int test_agent_all(void);
 extern int test_tools_gpio_policy_all(void);
 extern int test_tools_i2c_policy_all(void);
+extern int test_tools_dht_all(void);
 extern int test_builtin_tools_registry_all(void);
 extern int test_tools_system_diag_all(void);
 extern int test_llm_auth_all(void);
@@ -47,6 +48,7 @@ int main(int argc, char *argv[])
     failures += test_agent_all();
     failures += test_tools_gpio_policy_all();
     failures += test_tools_i2c_policy_all();
+    failures += test_tools_dht_all();
     failures += test_builtin_tools_registry_all();
     failures += test_tools_system_diag_all();
     failures += test_llm_auth_all();

@@ -63,6 +63,7 @@ run_host_tests() {
         test_agent.c \
         test_tools_gpio_policy.c \
         test_tools_i2c_policy.c \
+        test_tools_dht.c \
         test_builtin_tools_registry.c \
         test_tools_system_diag.c \
         test_llm_auth.c \
@@ -95,8 +96,10 @@ run_host_tests() {
         ../../main/agent.c \
         ../../main/local_admin.c \
         ../../main/gpio_policy.c \
+        ../../main/tools_common.c \
         ../../main/tools_gpio.c \
         ../../main/tools_i2c.c \
+        ../../main/tools_dht.c \
         ../../main/tools_system.c \
         $CJSON_LDFLAGS 2>&1 || {
         echo "Note: Failed to compile tests. Install cJSON:"
@@ -150,6 +153,7 @@ run_host_tests() {
 
     echo "=== Running host bridge Python tests ==="
     python3 -m unittest -q \
+        test_benchmark_latency.py \
         test_qemu_live_llm_bridge.py \
         test_web_relay.py \
         test_install_provision_scripts.py \

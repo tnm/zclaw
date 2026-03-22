@@ -71,7 +71,7 @@ Non-interactive install:
 - Built-in + user-defined tools
 - For brand-new built-in capabilities, add a firmware tool (C handler + registry entry) via the Build Your Own Tool docs.
 - Runtime diagnostics via `get_diagnostics` (quick/runtime/memory/rates/time/all scopes)
-- GPIO read/write control with guardrails (including bulk `gpio_read_all`)
+- GPIO, DHT, and I2C control with guardrails (including `gpio_read_all`, `i2c_scan`, `i2c_read`/`i2c_write`, and `dht_read`)
 - USB local admin console for recovery, safe mode, and pre-network bring-up
 - Persistent memory across reboots
 - Persona options: `neutral`, `friendly`, `technical`, `witty`

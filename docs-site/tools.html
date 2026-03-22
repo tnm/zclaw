@@ -61,7 +61,7 @@
               <tr><th>Group</th><th>Tools</th><th>Use</th></tr>
             </thead>
             <tbody>
-              <tr><td>GPIO</td><td><code>gpio_write</code>, <code>gpio_read</code>, <code>gpio_read_all</code>, <code>delay</code>, <code>i2c_scan</code></td><td>Pins, timings, sensor bus checks (including one-call full GPIO state reads).</td></tr>
+              <tr><td>Hardware</td><td><code>gpio_write</code>, <code>gpio_read</code>, <code>gpio_read_all</code>, <code>delay</code>, <code>i2c_scan</code>, <code>i2c_write</code>, <code>i2c_read</code>, <code>i2c_write_read</code>, <code>dht_read</code></td><td>Pins, timing-sensitive sensors, and generic I2C bus transactions (including one-call full GPIO state reads).</td></tr>
               <tr><td>Memory</td><td><code>memory_set</code>, <code>memory_get</code>, <code>memory_list</code>, <code>memory_delete</code></td><td>Persistent user state (<code>u_*</code> keys).</td></tr>
               <tr><td>Schedules</td><td><code>cron_set</code>, <code>cron_list</code>, <code>cron_delete</code></td><td>Periodic, daily, and one-shot jobs.</td></tr>
               <tr><td>Clock</td><td><code>get_time</code>, <code>set_timezone</code>, <code>get_timezone</code></td><td>Timezone-aware schedule behavior.</td></tr>
@@ -69,6 +69,21 @@
               <tr><td>User tools</td><td><code>create_tool</code>, <code>list_user_tools</code>, <code>delete_user_tool</code></td><td>Runtime macro layer (no reflash). For firmware-coded tools, see Chapter 5.</td></tr>
             </tbody>
           </table>
+        </section>
+
+        <section class="section">
+          <h2>Sensors and Bus Tools</h2>
+          <p>zclaw now splits hardware access by protocol instead of forcing everything through raw GPIO. That keeps schemas clearer and gives firmware a place to enforce timing and validation.</p>
+          <ul>
+            <li><code>dht_read</code> is for <code>dht11</code> and <code>dht22</code> only. DHT uses a timing-sensitive single-wire protocol on one GPIO pin. It is not I2C.</li>
+            <li><code>i2c_scan</code> finds responding 7-bit addresses on a chosen SDA/SCL pair.</li>
+            <li><code>i2c_write</code> sends space-separated hex bytes to one 7-bit address.</li>
+            <li><code>i2c_read</code> reads raw bytes from one 7-bit address.</li>
+            <li><code>i2c_write_read</code> writes first, then reads from the same address. Use this for register reads.</li>
+          </ul>
+          <pre>{"sda_pin":8,"scl_pin":9,"address":118,"write_hex":"0xD0","read_length":1}</pre>
+          <pre>{"pin":5,"model":"dht22"}</pre>
+          <p class="inline-note">Hex payload fields accept space-separated bytes such as <code>0xF4 0x2E</code>. Tool JSON uses decimal I2C addresses, so <code>118</code> means <code>0x76</code>.</p>
         </section>
 
         <section class="section">
@@ -155,6 +170,8 @@ Agent internals:
           <h2>Operational Boundaries</h2>
           <ul>
             <li>GPIO is constrained by configured safety policy.</li>
+            <li>DHT support is explicit and model-scoped today: use <code>dht_read</code> for DHT11/DHT22, not generic GPIO or I2C tools.</li>
+            <li>I2C bus access still uses the same GPIO safety policy for SDA/SCL pins.</li>
             <li>Memory keys for user values must use <code>u_</code> prefix.</li>
             <li>Schedule action payload is bounded by <code>CRON_MAX_ACTION_LEN</code>.</li>
           </ul>

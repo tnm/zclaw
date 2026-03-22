@@ -243,6 +243,10 @@ Full reference: [Local Admin Console](docs-site/local-admin.html)
 | `gpio_read_all` | Read all tool-allowed GPIO pin states in one call |
 | `delay` | Wait milliseconds (max 60000) |
 | `i2c_scan` | Scan I2C bus and list responding addresses |
+| `i2c_write` | Write hex bytes to a 7-bit I2C device |
+| `i2c_read` | Read raw bytes from a 7-bit I2C device |
+| `i2c_write_read` | Write bytes, then read bytes from the same I2C device |
+| `dht_read` | Read DHT11/DHT22 humidity and temperature on one GPIO pin |
 | `memory_set` | Store persistent user key-value (`u_*` keys only) |
 | `memory_get` | Retrieve stored user value (`u_*` keys only) |
 | `memory_list` | List stored user keys (`u_*`) |
@@ -262,11 +266,33 @@ Full reference: [Local Admin Console](docs-site/local-admin.html)
 
 Built-in firmware update tools are temporarily disabled and marked as coming soon.
 
-`i2c_scan` requires `sda_pin` and `scl_pin` inputs (plus optional `frequency_hz`).
-Example tool call input:
+`i2c_scan`, `i2c_write`, `i2c_read`, and `i2c_write_read` require `sda_pin` and `scl_pin` inputs (plus optional `frequency_hz`).
+I2C addresses are 7-bit decimal integers in JSON. For example, `118` means `0x76`.
+
+Example I2C scan:
 
 ```json
 {"sda_pin":8,"scl_pin":9,"frequency_hz":100000}
+```
+
+Example register read via I2C:
+
+```json
+{"sda_pin":8,"scl_pin":9,"address":118,"write_hex":"0xD0","read_length":1}
+```
+
+Example register write via I2C:
+
+```json
+{"sda_pin":8,"scl_pin":9,"address":118,"data_hex":"0xF4 0x2E"}
+```
+
+`dht_read` is separate because DHT sensors do not use I2C. They use a timing-sensitive single-wire protocol on one GPIO pin.
+
+Example DHT read:
+
+```json
+{"pin":5,"model":"dht22"}
 ```
 
 ### Runtime Diagnostics (`get_diagnostics`)

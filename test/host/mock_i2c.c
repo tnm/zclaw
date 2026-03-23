@@ -4,12 +4,17 @@
 #include <stddef.h>
 
 #define I2C_TEST_MAX_BYTES 64
+#define I2C_TEST_MAX_WRITES 8
 
 static int s_param_config_calls = 0;
 static int s_driver_install_calls = 0;
 static int s_driver_delete_calls = 0;
+static int s_write_to_device_calls = 0;
 static esp_err_t s_cmd_begin_result = ESP_FAIL;
 static esp_err_t s_write_to_device_result = ESP_OK;
+static esp_err_t s_write_to_device_results[I2C_TEST_MAX_WRITES];
+static int s_write_to_device_result_count = 0;
+static int s_write_to_device_result_index = 0;
 static esp_err_t s_read_from_device_result = ESP_OK;
 static esp_err_t s_write_read_device_result = ESP_OK;
 static uint8_t s_read_data[I2C_TEST_MAX_BYTES];
@@ -18,14 +23,21 @@ static uint8_t s_last_address = 0;
 static uint8_t s_last_write[I2C_TEST_MAX_BYTES];
 static size_t s_last_write_len = 0;
 static size_t s_last_read_len = 0;
+static uint8_t s_write_addresses[I2C_TEST_MAX_WRITES];
+static uint8_t s_write_history[I2C_TEST_MAX_WRITES][I2C_TEST_MAX_BYTES];
+static size_t s_write_history_len[I2C_TEST_MAX_WRITES];
 
 void i2c_test_reset(void)
 {
     s_param_config_calls = 0;
     s_driver_install_calls = 0;
     s_driver_delete_calls = 0;
+    s_write_to_device_calls = 0;
     s_cmd_begin_result = ESP_FAIL;
     s_write_to_device_result = ESP_OK;
+    memset(s_write_to_device_results, 0, sizeof(s_write_to_device_results));
+    s_write_to_device_result_count = 0;
+    s_write_to_device_result_index = 0;
     s_read_from_device_result = ESP_OK;
     s_write_read_device_result = ESP_OK;
     memset(s_read_data, 0, sizeof(s_read_data));
@@ -34,6 +46,9 @@ void i2c_test_reset(void)
     memset(s_last_write, 0, sizeof(s_last_write));
     s_last_write_len = 0;
     s_last_read_len = 0;
+    memset(s_write_addresses, 0, sizeof(s_write_addresses));
+    memset(s_write_history, 0, sizeof(s_write_history));
+    memset(s_write_history_len, 0, sizeof(s_write_history_len));
 }
 
 void i2c_test_set_cmd_begin_result(esp_err_t result)
@@ -44,6 +59,15 @@ void i2c_test_set_cmd_begin_result(esp_err_t result)
 void i2c_test_set_write_to_device_result(esp_err_t result)
 {
     s_write_to_device_result = result;
+}
+
+bool i2c_test_push_write_to_device_result(esp_err_t result)
+{
+    if (s_write_to_device_result_count >= I2C_TEST_MAX_WRITES) {
+        return false;
+    }
+    s_write_to_device_results[s_write_to_device_result_count++] = result;
+    return true;
 }
 
 void i2c_test_set_read_from_device_result(esp_err_t result)
@@ -85,6 +109,11 @@ int i2c_test_get_driver_delete_calls(void)
     return s_driver_delete_calls;
 }
 
+int i2c_test_get_write_to_device_calls(void)
+{
+    return s_write_to_device_calls;
+}
+
 uint8_t i2c_test_get_last_address(void)
 {
     return s_last_address;
@@ -106,6 +135,32 @@ uint8_t i2c_test_get_last_write_byte(size_t index)
         return 0;
     }
     return s_last_write[index];
+}
+
+uint8_t i2c_test_get_write_to_device_address(size_t index)
+{
+    if (index >= (size_t)s_write_to_device_calls || index >= I2C_TEST_MAX_WRITES) {
+        return 0;
+    }
+    return s_write_addresses[index];
+}
+
+size_t i2c_test_get_write_to_device_length(size_t index)
+{
+    if (index >= (size_t)s_write_to_device_calls || index >= I2C_TEST_MAX_WRITES) {
+        return 0;
+    }
+    return s_write_history_len[index];
+}
+
+uint8_t i2c_test_get_write_to_device_byte(size_t call_index, size_t byte_index)
+{
+    if (call_index >= (size_t)s_write_to_device_calls ||
+        call_index >= I2C_TEST_MAX_WRITES ||
+        byte_index >= s_write_history_len[call_index]) {
+        return 0;
+    }
+    return s_write_history[call_index][byte_index];
 }
 
 esp_err_t i2c_param_config(i2c_port_t i2c_num, const i2c_config_t *i2c_conf)
@@ -179,6 +234,7 @@ esp_err_t i2c_master_write_to_device(i2c_port_t i2c_num,
                                      uint32_t ticks_to_wait)
 {
     size_t copy_len = write_size;
+    esp_err_t result = s_write_to_device_result;
 
     (void)i2c_num;
     (void)ticks_to_wait;
@@ -192,7 +248,18 @@ esp_err_t i2c_master_write_to_device(i2c_port_t i2c_num,
     if (write_buffer && copy_len > 0) {
         memcpy(s_last_write, write_buffer, copy_len);
     }
-    return s_write_to_device_result;
+    if (s_write_to_device_calls < I2C_TEST_MAX_WRITES) {
+        s_write_addresses[s_write_to_device_calls] = device_address;
+        s_write_history_len[s_write_to_device_calls] = copy_len;
+        if (write_buffer && copy_len > 0) {
+            memcpy(s_write_history[s_write_to_device_calls], write_buffer, copy_len);
+        }
+    }
+    s_write_to_device_calls++;
+    if (s_write_to_device_result_index < s_write_to_device_result_count) {
+        result = s_write_to_device_results[s_write_to_device_result_index++];
+    }
+    return result;
 }
 
 esp_err_t i2c_master_read_from_device(i2c_port_t i2c_num,

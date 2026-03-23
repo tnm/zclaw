@@ -246,6 +246,7 @@ Full reference: [Local Admin Console](docs-site/local-admin.html)
 | `i2c_write` | Write hex bytes to a 7-bit I2C device |
 | `i2c_read` | Read raw bytes from a 7-bit I2C device |
 | `i2c_write_read` | Write bytes, then read bytes from the same I2C device |
+| `bh1750_read` | Read ambient light from a BH1750 in lux |
 | `dht_read` | Read DHT11/DHT22 humidity and temperature on one GPIO pin |
 | `memory_set` | Store persistent user key-value (`u_*` keys only) |
 | `memory_get` | Retrieve stored user value (`u_*` keys only) |
@@ -269,6 +270,8 @@ Built-in firmware update tools are temporarily disabled and marked as coming soo
 `i2c_scan`, `i2c_write`, `i2c_read`, and `i2c_write_read` require `sda_pin` and `scl_pin` inputs (plus optional `frequency_hz`).
 I2C addresses are 7-bit decimal integers in JSON. For example, `118` means `0x76`.
 
+`bh1750_read` is a typed I2C wrapper for the BH1750 ambient light sensor. It requires `sda_pin` and `scl_pin`, defaults to address `35` (`0x23`), and also supports `92` (`0x5C`).
+
 Example I2C scan:
 
 ```json
@@ -285,6 +288,12 @@ Example register write via I2C:
 
 ```json
 {"sda_pin":8,"scl_pin":9,"address":118,"data_hex":"0xF4 0x2E"}
+```
+
+Example BH1750 read:
+
+```json
+{"sda_pin":8,"scl_pin":9}
 ```
 
 `dht_read` is separate because DHT sensors do not use I2C. They use a timing-sensitive single-wire protocol on one GPIO pin.

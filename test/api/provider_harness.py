@@ -17,7 +17,7 @@ except ModuleNotFoundError:
 
 SYSTEM_PROMPT = """You are zclaw, an AI agent running on an ESP32 microcontroller. \
 You have 400KB of RAM and run on bare metal with FreeRTOS. \
-You can control GPIO pins, talk to I2C devices, read supported sensors, store persistent memories, and set schedules. \
+You can control GPIO pins, talk to I2C devices, read supported sensors like DHT and BH1750, store persistent memories, and set schedules. \
 Be concise - you're on a tiny chip. \
 Use your tools to control hardware, remember things, and automate tasks. \
 Users can create custom tools with create_tool. When you call a custom tool, \
@@ -116,6 +116,20 @@ TOOLS = [
                 "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
             },
             "required": ["sda_pin", "scl_pin", "address", "write_hex", "read_length"],
+        },
+    },
+    {
+        "name": "bh1750_read",
+        "description": "Read ambient light from a BH1750 sensor in lux. This is a typed I2C sensor read.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
+                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
+                "address": {"type": "integer", "description": "Optional BH1750 address: 35 (0x23) or 92 (0x5C)"},
+                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+            },
+            "required": ["sda_pin", "scl_pin"],
         },
     },
     {
@@ -276,6 +290,7 @@ MOCK_RESULTS = {
     "i2c_read": lambda inp: f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')}: 0x00",
     "i2c_write_read": lambda inp: f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')} after writing bytes: 0x00",
     "dht_read": lambda inp: f"{inp.get('model', 'dht11').upper()} on GPIO {inp.get('pin')}: humidity=55.0%, temperature=24.0 C",
+    "bh1750_read": lambda inp: f"BH1750 0x{inp.get('address', 35):02X}: 184.0 lux",
     "memory_set": lambda inp: f"Saved: {inp.get('key')} = {inp.get('value')}",
     "memory_get": lambda inp: f"{inp.get('key')} = example_value",
     "memory_list": lambda inp: "Stored keys: user_name, last_water",

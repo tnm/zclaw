@@ -54,15 +54,20 @@ esp_err_t i2c_master_write_read_device(i2c_port_t i2c_num,
 void i2c_test_reset(void);
 void i2c_test_set_cmd_begin_result(esp_err_t result);
 void i2c_test_set_write_to_device_result(esp_err_t result);
+bool i2c_test_push_write_to_device_result(esp_err_t result);
 void i2c_test_set_read_from_device_result(esp_err_t result);
 void i2c_test_set_write_read_device_result(esp_err_t result);
 void i2c_test_set_read_data(const uint8_t *data, size_t len);
 int i2c_test_get_param_config_calls(void);
 int i2c_test_get_driver_install_calls(void);
 int i2c_test_get_driver_delete_calls(void);
+int i2c_test_get_write_to_device_calls(void);
 uint8_t i2c_test_get_last_address(void);
 size_t i2c_test_get_last_write_length(void);
 size_t i2c_test_get_last_read_length(void);
 uint8_t i2c_test_get_last_write_byte(size_t index);
+uint8_t i2c_test_get_write_to_device_address(size_t index);
+size_t i2c_test_get_write_to_device_length(size_t index);
+uint8_t i2c_test_get_write_to_device_byte(size_t call_index, size_t byte_index);
 
 #endif  // DRIVER_I2C_H

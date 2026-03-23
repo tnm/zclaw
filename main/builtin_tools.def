@@ -40,6 +40,10 @@ TOOL_ENTRY("i2c_write_read",
            "Write hex bytes, then read from the same I2C address.",
            "{\"type\":\"object\",\"properties\":{\"sda_pin\":{\"type\":\"integer\"},\"scl_pin\":{\"type\":\"integer\"},\"address\":{\"type\":\"integer\"},\"write_hex\":{\"type\":\"string\"},\"read_length\":{\"type\":\"integer\"},\"frequency_hz\":{\"type\":\"integer\"}},\"required\":[\"sda_pin\",\"scl_pin\",\"address\",\"write_hex\",\"read_length\"]}",
            tools_i2c_write_read_handler)
+TOOL_ENTRY("bh1750_read",
+           "Read ambient light from a BH1750 sensor in lux.",
+           "{\"type\":\"object\",\"properties\":{\"sda_pin\":{\"type\":\"integer\"},\"scl_pin\":{\"type\":\"integer\"},\"address\":{\"type\":\"integer\"},\"frequency_hz\":{\"type\":\"integer\"}},\"required\":[\"sda_pin\",\"scl_pin\"]}",
+           tools_bh1750_read_handler)
 TOOL_ENTRY("dht_read",
            "Read a DHT11 or DHT22 sensor.",
            "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"},\"model\":{\"type\":\"string\",\"enum\":[\"dht11\",\"dht22\"]},\"retries\":{\"type\":\"integer\"}},\"required\":[\"pin\",\"model\"]}",

@@ -20,6 +20,7 @@ bool tools_i2c_scan_handler(const cJSON *input, char *result, size_t result_len)
 bool tools_i2c_write_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_i2c_read_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_i2c_write_read_handler(const cJSON *input, char *result, size_t result_len);
+bool tools_bh1750_read_handler(const cJSON *input, char *result, size_t result_len);
 bool tools_dht_read_handler(const cJSON *input, char *result, size_t result_len);
 
 // Memory

@@ -88,6 +88,7 @@ TEST(required_core_tools_exist)
         "i2c_write",
         "i2c_read",
         "i2c_write_read",
+        "bh1750_read",
         "dht_read",
         "memory_set",
         "cron_set",

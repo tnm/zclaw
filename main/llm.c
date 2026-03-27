@@ -509,6 +509,10 @@ esp_err_t llm_init(void)
         ESP_LOGW(TAG, "Ollama backend using default loopback URL; set llm_api_url for network access");
     }
 
+    if (s_model[0] == '\0' && s_backend == LLM_BACKEND_AZURE_OPENAI) {
+        ESP_LOGW(TAG, "Azure OpenAI backend requires llm_model to be configured");
+    }
+
 #ifdef CONFIG_ZCLAW_STUB_LLM
     ESP_LOGW(TAG, "LLM stub mode enabled (QEMU testing)");
 #endif
@@ -574,12 +578,14 @@ const char *llm_get_model(void)
     return s_model;
 }
 
-#if CONFIG_ZCLAW_STUB_LLM
 bool llm_stub_has_api_key_for_test(void)
 {
+#if CONFIG_ZCLAW_STUB_LLM
     return s_api_key[0] != '\0';
-}
+#else
+    return false;
 #endif
+}
 
 bool llm_is_openai_format(void)
 {
@@ -643,6 +649,11 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
     }
 
     response_buf[0] = '\0';
+
+    if (llm_get_model()[0] == '\0') {
+        ESP_LOGE(TAG, "No model configured for backend %s", llm_backend_name(s_backend));
+        return ESP_ERR_INVALID_STATE;
+    }
 
 #if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
     // In emulator bridge mode, delegate HTTPS API calls to a host-side proxy.

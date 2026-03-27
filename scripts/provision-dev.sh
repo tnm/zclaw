@@ -39,7 +39,7 @@ Overrides:
   --ssid <wifi-ssid>
   --pass <wifi-pass>
   --backend <provider>   anthropic | openai | azure-openai | openrouter | ollama
-  --model <model-id>
+  --model <model-id>      Model ID (Azure OpenAI uses deployment name)
   --api-key <key>
   --api-url <url>          Custom API endpoint URL
   --tg-token <token>
@@ -66,7 +66,9 @@ ZCLAW_PORT=/dev/cu.usbmodem1101
 ZCLAW_WIFI_SSID=YourWifi
 ZCLAW_WIFI_PASS=YourWifiPassword
 ZCLAW_BACKEND=openai
-ZCLAW_MODEL=gpt-5.4
+# Model ID for the selected backend.
+# For Azure OpenAI, set this to your deployment name; leave it blank until you know it.
+ZCLAW_MODEL=
 ZCLAW_API_URL=
 
 # Prefer setting one API key here:
@@ -364,6 +366,12 @@ fi
 if [ "$BACKEND" = "azure-openai" ] && [ -z "$API_URL" ]; then
     echo "Error: API URL not set for Azure OpenAI backend."
     echo "Set ZCLAW_API_URL in $ENV_FILE or pass --api-url."
+    exit 1
+fi
+
+if [ "$BACKEND" = "azure-openai" ] && [ -z "$MODEL" ]; then
+    echo "Error: model/deployment name not set for Azure OpenAI backend."
+    echo "Set ZCLAW_MODEL in $ENV_FILE or pass --model."
     exit 1
 fi
 

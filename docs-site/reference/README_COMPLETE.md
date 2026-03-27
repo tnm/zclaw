@@ -630,11 +630,13 @@ export OPENAI_API_KEY=...
 # Azure OpenAI
 export AZURE_OPENAI_API_KEY=...
 export AZURE_OPENAI_API_URL="https://<resource>.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+export AZURE_OPENAI_MODEL="<deployment-name>"
 ./scripts/emulate.sh --live-api --live-api-provider azure-openai
 ```
 
 `--live-api` keeps QEMU offline but proxies LLM requests over UART to a host bridge process.
-`--live-api-provider auto` (default) infers provider from request format.
+`--live-api-provider auto` (default) seeds the emulator runtime backend/model from the available host env, then infers provider from the emitted request format.
+Set `ANTHROPIC_MODEL`, `OPENAI_MODEL`, or `AZURE_OPENAI_MODEL` to override the seeded model/deployment when needed.
 Use `--live-api-logs` only when debugging bridge timing/forwarding.
 Set `OPENAI_API_URL` to target an OpenAI-compatible endpoint other than the default.
 

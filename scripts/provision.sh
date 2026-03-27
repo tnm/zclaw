@@ -30,7 +30,7 @@ Options:
   --ssid <wifi-ssid>        WiFi SSID (auto-detected when possible)
   --pass <wifi-pass>        WiFi password (optional)
   --backend <provider>      anthropic | openai | azure-openai | openrouter | ollama
-  --model <model-id>        Model ID (defaults by backend)
+  --model <model-id>        Model ID (Azure OpenAI uses deployment name; required there)
   --api-key <key>           LLM API key (required for anthropic/openai/azure-openai/openrouter)
   --api-url <url>           Optional custom API endpoint URL
   --tg-token <token>        Telegram bot token (optional)
@@ -350,10 +350,17 @@ default_model_for_backend() {
     case "$1" in
         anthropic) echo "claude-sonnet-4-6" ;;
         openai) echo "gpt-5.4" ;;
-        azure-openai) echo "gpt-5.4" ;;
+        azure-openai) echo "" ;;
         openrouter) echo "openrouter/auto" ;;
         ollama) echo "qwen3:8b" ;;
         *) echo "claude-sonnet-4-6" ;;
+    esac
+}
+
+model_prompt_label_for_backend() {
+    case "$1" in
+        azure-openai) printf '%s\n' "Azure OpenAI deployment name" ;;
+        *) printf '%s\n' "Model ID" ;;
     esac
 }
 
@@ -374,8 +381,8 @@ load_model_menu_for_backend() {
             MODEL_MENU_VALUES=("gpt-5.4" "gpt-5-mini" "gpt-4.1-mini" "__custom__")
             ;;
         azure-openai)
-            MODEL_MENU_LABELS=("gpt-5.4 (default)" "gpt-5-mini" "gpt-4.1-mini" "Other model ID")
-            MODEL_MENU_VALUES=("gpt-5.4" "gpt-5-mini" "gpt-4.1-mini" "__custom__")
+            MODEL_MENU_LABELS=("Enter Azure deployment name")
+            MODEL_MENU_VALUES=("__custom__")
             ;;
         openrouter)
             MODEL_MENU_LABELS=("openrouter/auto (default)" "openai/gpt-5.2" "openai/gpt-5-mini" "anthropic/claude-sonnet-4.6" "anthropic/claude-haiku-4.5" "Other model ID")
@@ -395,9 +402,30 @@ load_model_menu_for_backend() {
 prompt_for_model() {
     local backend="$1"
     local default_model="$2"
+    local prompt_label=""
     local choice=""
     local index
     local selected
+
+    prompt_label="$(model_prompt_label_for_backend "$backend")"
+
+    if [ "$backend" = "azure-openai" ]; then
+        while true; do
+            if [ -n "$default_model" ]; then
+                read -r -p "$prompt_label (default: $default_model): " selected
+                selected="${selected:-$default_model}"
+            else
+                read -r -p "$prompt_label (required): " selected
+            fi
+
+            if [ -n "$selected" ]; then
+                MODEL="$selected"
+                return 0
+            fi
+
+            echo "$prompt_label is required."
+        done
+    fi
 
     load_model_menu_for_backend "$backend"
 
@@ -421,13 +449,17 @@ prompt_for_model() {
         fi
 
         while true; do
-            read -r -p "Model ID (default: $default_model): " selected
-            selected="${selected:-$default_model}"
+            if [ -n "$default_model" ]; then
+                read -r -p "$prompt_label (default: $default_model): " selected
+                selected="${selected:-$default_model}"
+            else
+                read -r -p "$prompt_label (required): " selected
+            fi
             if [ -n "$selected" ]; then
                 MODEL="$selected"
                 return 0
             fi
-            echo "Model ID is required."
+            echo "$prompt_label is required."
         done
     done
 }
@@ -1153,7 +1185,13 @@ fi
 if [ -z "$MODEL" ]; then
     DEFAULT_MODEL="$(default_model_for_backend "$BACKEND")"
     if [ "$ASSUME_YES" = true ]; then
-        MODEL="$DEFAULT_MODEL"
+        if [ -z "$DEFAULT_MODEL" ] && [ "$BACKEND" != "azure-openai" ]; then
+            echo "Error: --model is required with --backend $BACKEND in --yes mode"
+            exit 1
+        fi
+        if [ -n "$DEFAULT_MODEL" ]; then
+            MODEL="$DEFAULT_MODEL"
+        fi
     else
         prompt_for_model "$BACKEND" "$DEFAULT_MODEL"
     fi
@@ -1185,6 +1223,11 @@ if [ "$BACKEND" = "azure-openai" ]; then
     API_URL="$(normalize_azure_openai_api_url "$API_URL" || true)"
     if [ -z "$API_URL" ]; then
         echo "Error: invalid --api-url for Azure OpenAI. Expected https://.../openai/responses?api-version=... or https://.../openai/v1/responses?api-version=..."
+        exit 1
+    fi
+
+    if [ -z "$MODEL" ]; then
+        echo "Error: --model is required with --backend azure-openai in --yes mode (use your Azure deployment name)"
         exit 1
     fi
 fi
@@ -1263,11 +1306,23 @@ if [ "$VERIFY_API_KEY" = true ]; then
                         echo "Valid API URL is required."
                     fi
                 elif [ "$BACKEND" = "azure-openai" ]; then
-                    read -r -p "LLM API key (input is visible): " API_KEY
-                    read -r -p "Azure OpenAI Responses API URL (for example https://.../openai/responses?api-version=...): " API_URL
-                    API_URL="$(normalize_azure_openai_api_url "$API_URL" || true)"
-                    if [ -z "$API_KEY" ] || [ -z "$API_URL" ]; then
-                        echo "Valid API key and Azure OpenAI URL are required."
+                    retry_model=""
+                    retry_api_key=""
+                    retry_api_url=""
+                    read -r -p "$(model_prompt_label_for_backend "$BACKEND") (default: $MODEL): " retry_model
+                    MODEL="${retry_model:-$MODEL}"
+                    read -r -p "LLM API key (press Enter to keep current): " retry_api_key
+                    if [ -n "$retry_api_key" ]; then
+                        API_KEY="$retry_api_key"
+                    fi
+                    read -r -p "Azure OpenAI Responses API URL (press Enter to keep current): " retry_api_url
+                    if [ -n "$retry_api_url" ]; then
+                        API_URL="$(normalize_azure_openai_api_url "$retry_api_url" || true)"
+                    else
+                        API_URL="$(normalize_azure_openai_api_url "$API_URL" || true)"
+                    fi
+                    if [ -z "$MODEL" ] || [ -z "$API_KEY" ] || [ -z "$API_URL" ]; then
+                        echo "Valid deployment name, API key, and Azure OpenAI URL are required."
                     fi
                 else
                     read -r -p "LLM API key (input is visible): " API_KEY

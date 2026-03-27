@@ -58,7 +58,7 @@ typedef enum {
 
 #define LLM_DEFAULT_MODEL_ANTHROPIC   "claude-sonnet-4-6"
 #define LLM_DEFAULT_MODEL_OPENAI      "gpt-5.4"
-#define LLM_DEFAULT_MODEL_AZURE_OPENAI "gpt-5.4"
+#define LLM_DEFAULT_MODEL_AZURE_OPENAI ""
 #define LLM_DEFAULT_MODEL_OPENROUTER  "openrouter/auto"
 #define LLM_DEFAULT_MODEL_OLLAMA      "qwen3:8b"
 

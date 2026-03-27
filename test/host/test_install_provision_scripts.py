@@ -21,6 +21,7 @@ TELEGRAM_CLEAR_SH = PROJECT_ROOT / "scripts" / "telegram-clear-backlog.sh"
 ERASE_SH = PROJECT_ROOT / "scripts" / "erase.sh"
 BUILD_SH = PROJECT_ROOT / "scripts" / "build.sh"
 FLASH_SH = PROJECT_ROOT / "scripts" / "flash.sh"
+EMULATE_SH = PROJECT_ROOT / "scripts" / "emulate.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -258,6 +259,371 @@ LAST_PORT=
     def test_install_idf_chip_list_includes_esp32(self) -> None:
         install_text = INSTALL_SH.read_text(encoding="utf-8")
         self.assertIn('ESP_IDF_CHIPS="esp32,esp32c3,esp32c6,esp32s3"', install_text)
+
+    def test_emulate_live_api_auto_seeds_azure_runtime_from_host_env(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "build_dir=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-B" ]; then build_dir="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'mkdir -p "$build_dir/bootloader" "$build_dir/partition_table"\n'
+                'printf "boot" > "$build_dir/bootloader/bootloader.bin"\n'
+                'printf "part" > "$build_dir/partition_table/partition-table.bin"\n'
+                'printf "app" > "$build_dir/zclaw.bin"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "out=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-o" ]; then out="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'printf "merged" > "$out"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "python3",
+                "#!/bin/sh\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+            env.pop("ANTHROPIC_API_KEY", None)
+            env.pop("OPENAI_API_KEY", None)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+            env["AZURE_OPENAI_API_URL"] = (
+                "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            )
+            env["AZURE_OPENAI_MODEL"] = "demo-deployment"
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "auto",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Provider selection: auto", output)
+        self.assertIn("Runtime backend: azure-openai", output)
+        self.assertIn("Runtime model: demo-deployment", output)
+        self.assertIn(
+            "Auto mode: runtime config is seeded from host env, then bridge infers provider from request format.",
+            output,
+        )
+        self.assertIn('llm_backend,data,string,"azure-openai"', captured_csv)
+        self.assertIn('llm_model,data,string,"demo-deployment"', captured_csv)
+        self.assertIn(
+            'llm_api_url,data,string,"https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"',
+            captured_csv,
+        )
+
+    def test_emulate_live_api_explicit_azure_requires_model(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+            env["AZURE_OPENAI_API_URL"] = (
+                "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            )
+            env.pop("AZURE_OPENAI_MODEL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "azure-openai",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: AZURE_OPENAI_MODEL is required for --live-api-provider azure-openai",
+            output,
+        )
+
+    def test_emulate_live_api_auto_requires_azure_model_for_azure_only_env(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env.pop("ANTHROPIC_API_KEY", None)
+            env.pop("OPENAI_API_KEY", None)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+            env["AZURE_OPENAI_API_URL"] = (
+                "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            )
+            env.pop("AZURE_OPENAI_MODEL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "auto",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: AZURE_OPENAI_MODEL is required for Azure OpenAI in --live-api auto mode",
+            output,
+        )
+
+    def test_emulate_live_api_explicit_anthropic_seeds_runtime_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "build_dir=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-B" ]; then build_dir="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'mkdir -p "$build_dir/bootloader" "$build_dir/partition_table"\n'
+                'printf "boot" > "$build_dir/bootloader/bootloader.bin"\n'
+                'printf "part" > "$build_dir/partition_table/partition-table.bin"\n'
+                'printf "app" > "$build_dir/zclaw.bin"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "out=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-o" ]; then out="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'printf "merged" > "$out"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "python3",
+                "#!/bin/sh\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+            env["ANTHROPIC_API_KEY"] = "anthropic-sk-test-xyz"
+            env.pop("ANTHROPIC_MODEL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "anthropic",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Provider selection: anthropic", output)
+        self.assertIn("Runtime backend: anthropic", output)
+        self.assertIn("Runtime model: claude-sonnet-4-6", output)
+        self.assertIn('llm_backend,data,string,"anthropic"', captured_csv)
+        self.assertIn('llm_model,data,string,"claude-sonnet-4-6"', captured_csv)
+
+    def test_emulate_live_api_auto_rejects_missing_provider_creds(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env.pop("ANTHROPIC_API_KEY", None)
+            env.pop("OPENAI_API_KEY", None)
+            env.pop("AZURE_OPENAI_API_KEY", None)
+            env.pop("AZURE_OPENAI_API_URL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "auto",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: set OPENAI_API_KEY, ANTHROPIC_API_KEY, or AZURE_OPENAI_API_KEY + AZURE_OPENAI_API_URL + AZURE_OPENAI_MODEL for --live-api mode",
+            output,
+        )
 
     def test_kconfig_defaults_uart_when_usb_serial_jtag_is_unsupported(self) -> None:
         kconfig_text = KCONFIG_PROJBUILD.read_text(encoding="utf-8")
@@ -592,6 +958,7 @@ LAST_PORT=
         self,
         backend: str,
         api_url: str | None = None,
+        model: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -639,6 +1006,8 @@ LAST_PORT=
                 "--api-key",
                 "sk-test",
             ]
+            if model is not None:
+                cmd.extend(["--model", model])
             if api_url is not None:
                 cmd.extend(["--api-url", api_url])
 
@@ -656,6 +1025,7 @@ LAST_PORT=
         *,
         backend: str,
         api_url: str,
+        model: str | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -719,6 +1089,7 @@ LAST_PORT=
                     "password123",
                     "--backend",
                     backend,
+                    *(["--model", model] if model is not None else []),
                     "--api-key",
                     "sk-test",
                     "--api-url",
@@ -927,6 +1298,7 @@ LAST_PORT=
         proc = self._run_provision_api_check_fail(
             "azure-openai",
             api_url="https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+            model="gepete-5",
         )
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertNotEqual(proc.returncode, 0, msg=output)
@@ -962,6 +1334,7 @@ LAST_PORT=
         proc, called_url = self._run_provision_api_check_capture_url(
             backend="azure-openai",
             api_url=api_url,
+            model="gepete-5",
         )
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertNotEqual(proc.returncode, 0, msg=output)
@@ -1005,6 +1378,8 @@ LAST_PORT=
                     "password123",
                     "--backend",
                     "azure-openai",
+                    "--model",
+                    "gepete-5",
                     "--api-key",
                     "sk-test",
                 ],
@@ -1019,6 +1394,22 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn(
             "Error: --api-url is required with --backend azure-openai in --yes mode",
+            output,
+        )
+
+    def test_provision_azure_openai_requires_model_in_yes_mode(
+        self,
+    ) -> None:
+        proc, _captured_csv = self._run_provision_capture_csv(
+            backend="azure-openai",
+            assume_yes=True,
+            api_key="sk-test",
+            api_url="https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: --model is required with --backend azure-openai in --yes mode",
             output,
         )
 
@@ -1117,24 +1508,145 @@ LAST_PORT=
         self.assertIn("Select model for openai:", output)
         self.assertIn('llm_model,data,string,"custom-model-123"', captured_csv)
 
-    def test_provision_interactive_azure_openai_model_menu_defaults_to_first_choice(
+    def test_provision_interactive_azure_openai_model_prompt_accepts_custom_deployment(
         self,
     ) -> None:
         proc, captured_csv = self._run_provision_capture_csv(
             backend="azure-openai",
             assume_yes=False,
-            input_text="\nhttps://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview\ny\n\n\n",
+            input_text="gepete-5\nhttps://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview\ny\n\n\n",
             api_key="sk-test",
         )
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertEqual(proc.returncode, 0, msg=output)
-        self.assertIn("Select model for azure-openai:", output)
         self.assertIn('llm_backend,data,string,"azure-openai"', captured_csv)
-        self.assertIn('llm_model,data,string,"gpt-5.4"', captured_csv)
+        self.assertIn('llm_model,data,string,"gepete-5"', captured_csv)
         self.assertIn(
             'llm_api_url,data,string,"https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"',
             captured_csv,
         )
+
+    def test_provision_interactive_azure_openai_retry_can_fix_deployment_name(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
+            parttool = idf_dir / "components" / "partition_table" / "parttool.py"
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            parttool.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            parttool.write_text("# parttool stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "python",
+                "#!/bin/sh\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "curl",
+                "#!/bin/sh\n"
+                "out=''\n"
+                "body=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  case "$1" in\n'
+                '    -o) out="$2"; shift 2 ;;\n'
+                '    -d) body="$2"; shift 2 ;;\n'
+                "    -w|-H|--connect-timeout|--max-time) shift 2 ;;\n"
+                "    -s|-S|-sS) shift ;;\n"
+                "    *) shift ;;\n"
+                "  esac\n"
+                "done\n"
+                'model="unknown"\n'
+                'case "$body" in\n'
+                '  *bad-deployment*) model="bad-deployment" ;;\n'
+                '  *good-deployment*) model="good-deployment" ;;\n'
+                "esac\n"
+                'printf "%s\\n" "$model" >> "$CURL_MODELS_FILE"\n'
+                'if [ "$model" = "good-deployment" ]; then\n'
+                '  if [ -n "$out" ]; then printf "%s" "{}" > "$out"; fi\n'
+                '  printf "%s" "200"\n'
+                "else\n"
+                '  if [ -n "$out" ]; then printf \'%s\' \'{"error":{"message":"deployment not found"}}\' > "$out"; fi\n'
+                '  printf "%s" "401"\n'
+                "fi\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+            env["CURL_MODELS_FILE"] = str(tmp / "curl-models.txt")
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    "HomeNetwork",
+                    "--pass",
+                    "password123",
+                    "--backend",
+                    "azure-openai",
+                    "--api-key",
+                    "sk-test",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                input=(
+                    "bad-deployment\n"
+                    "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview\n"
+                    "y\n"
+                    "good-deployment\n"
+                    "\n"
+                    "\n"
+                    "y\n"
+                    "\n"
+                    "\n"
+                ),
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
+            curl_models = (
+                (tmp / "curl-models.txt").read_text(encoding="utf-8")
+                if (tmp / "curl-models.txt").exists()
+                else ""
+            )
+
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("deployment not found", output)
+        self.assertIn("bad-deployment\n", curl_models)
+        self.assertIn("good-deployment\n", curl_models)
+        self.assertIn('llm_model,data,string,"good-deployment"', captured_csv)
 
     def test_provision_interactive_ollama_model_menu_defaults_to_qwen(self) -> None:
         proc, captured_csv = self._run_provision_capture_csv(
@@ -1500,7 +2012,8 @@ LAST_PORT=
             self.assertTrue(env_file.exists(), msg=output)
             content = env_file.read_text(encoding="utf-8")
             self.assertIn("ZCLAW_WIFI_SSID", content)
-            self.assertIn("ZCLAW_MODEL=gpt-5.4", content)
+            self.assertIn("ZCLAW_MODEL=", content)
+            self.assertNotIn("ZCLAW_MODEL=gpt-5.4", content)
             self.assertIn("ZCLAW_API_KEY", content)
             self.assertIn("ZCLAW_API_URL", content)
             self.assertIn("AZURE_OPENAI_API_KEY", content)
@@ -1630,6 +2143,7 @@ LAST_PORT=
                     [
                         "ZCLAW_WIFI_SSID=Trident",
                         "ZCLAW_BACKEND=azure-openai",
+                        "ZCLAW_MODEL=gepete-5",
                         "ZCLAW_API_URL=https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
                         "",
                     ]
@@ -1660,8 +2174,98 @@ LAST_PORT=
             args_text = args_file.read_text(encoding="utf-8")
             self.assertIn("--backend", args_text)
             self.assertIn("azure-openai", args_text)
+            self.assertIn("--model", args_text)
+            self.assertIn("gepete-5", args_text)
             self.assertIn("--api-key", args_text)
             self.assertIn("azure-sk-test-xyz", args_text)
+
+    def test_provision_dev_azure_openai_requires_model(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=azure-openai",
+                        "ZCLAW_API_URL=https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertNotEqual(proc.returncode, 0, msg=output)
+            self.assertIn(
+                "Error: model/deployment name not set for Azure OpenAI backend.",
+                output,
+            )
+
+    def test_provision_dev_azure_show_config_with_model(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            args_file = tmp / "args.txt"
+            stub = tmp / "mock-provision.sh"
+
+            _write_executable(
+                stub,
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
+            )
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=azure-openai",
+                        "ZCLAW_MODEL=gepete-5",
+                        "ZCLAW_API_URL=https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["ARGS_FILE"] = str(args_file)
+            env["ZCLAW_PROVISION_SCRIPT"] = str(stub)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                    "--show-config",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            self.assertIn("Model: gepete-5", output)
 
     def test_provision_dev_forwards_multi_telegram_chat_ids(self) -> None:
         with tempfile.TemporaryDirectory() as td:

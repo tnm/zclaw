@@ -490,7 +490,8 @@ def _tool_defs_for_provider(
 
 def _openai_like_max_tokens_field(model: str) -> tuple[str, int]:
     # Mirror firmware behavior: GPT-5 chat-completions expects max_completion_tokens.
-    if model.lower().startswith("gpt-5"):
+    model_name = model.lower().rsplit("/", 1)[-1]
+    if model_name.startswith("gpt-5"):
         return ("max_completion_tokens", 1024)
     return ("max_tokens", 1024)
 

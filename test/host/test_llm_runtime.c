@@ -139,8 +139,23 @@ TEST(azure_openai_requires_explicit_api_url)
     configure_mock_store("azure-openai", NULL, "test-key", NULL);
     ASSERT(llm_init() == ESP_OK);
     ASSERT(strcmp(llm_get_api_url(), "") == 0);
-    ASSERT(strcmp(llm_get_model(), LLM_DEFAULT_MODEL_AZURE_OPENAI) == 0);
+    ASSERT(strcmp(llm_get_model(), "") == 0);
     ASSERT(llm_uses_responses_api());
+    return 0;
+}
+
+TEST(azure_openai_requires_explicit_model_for_requests)
+{
+    char response[LLM_RESPONSE_BUF_SIZE] = {0};
+
+    configure_mock_store(
+        "azure-openai",
+        NULL,
+        "test-key",
+        "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+    );
+    ASSERT(llm_init() == ESP_OK);
+    ASSERT(llm_request("{\"message\":\"hello\"}", response, sizeof(response)) == ESP_ERR_INVALID_STATE);
     return 0;
 }
 
@@ -228,6 +243,13 @@ int test_llm_runtime_all(void)
 
     printf("  azure_openai_requires_explicit_api_url... ");
     if (test_azure_openai_requires_explicit_api_url() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  azure_openai_requires_explicit_model_for_requests... ");
+    if (test_azure_openai_requires_explicit_model_for_requests() == 0) {
         printf("OK\n");
     } else {
         failures++;

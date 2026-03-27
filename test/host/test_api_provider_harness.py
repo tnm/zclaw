@@ -30,8 +30,20 @@ class ProviderHarnessTests(unittest.TestCase):
         self.assertEqual(field, "max_completion_tokens")
         self.assertEqual(value, 1024)
 
+    def test_openai_prefixed_gpt5_uses_max_completion_tokens(self) -> None:
+        field, value = provider_harness._openai_like_max_tokens_field("openai/gpt-5.2")
+        self.assertEqual(field, "max_completion_tokens")
+        self.assertEqual(value, 1024)
+
     def test_openai_non_gpt5_uses_max_tokens(self) -> None:
         field, value = provider_harness._openai_like_max_tokens_field("gpt-4.1-mini")
+        self.assertEqual(field, "max_tokens")
+        self.assertEqual(value, 1024)
+
+    def test_openai_prefixed_non_gpt5_uses_max_tokens(self) -> None:
+        field, value = provider_harness._openai_like_max_tokens_field(
+            "openai/gpt-4.1-mini"
+        )
         self.assertEqual(field, "max_tokens")
         self.assertEqual(value, 1024)
 
@@ -176,6 +188,34 @@ class ProviderHarnessTests(unittest.TestCase):
 
         request_json = payload["json"]
         self.assertEqual(request_json["messages"], messages)
+
+    def test_call_api_openrouter_prefixed_gpt5_uses_max_completion_tokens(self) -> None:
+        provider = provider_harness.PROVIDERS["openrouter"]
+        messages = [{"role": "user", "content": "Hello"}]
+        payload: dict[str, Any] = {}
+
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
+            payload["url"] = url
+            payload["headers"] = headers
+            payload["json"] = json
+            payload["timeout"] = timeout
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"ok": True}
+            return response
+
+        with patch.object(provider_harness, "httpx", SimpleNamespace(post=fake_post)):
+            result = provider_harness.call_api(
+                provider, messages, "test-key", "openai/gpt-5.2", user_tools=[]
+            )
+
+        self.assertEqual(result, {"ok": True})
+        request_json = payload["json"]
+        self.assertEqual(request_json["model"], "openai/gpt-5.2")
+        self.assertEqual(request_json["max_completion_tokens"], 1024)
+        self.assertNotIn("max_tokens", request_json)
 
     def test_call_api_azure_openai_uses_api_key_header_and_env_url(self) -> None:
         provider = provider_harness.PROVIDERS["azure-openai"]

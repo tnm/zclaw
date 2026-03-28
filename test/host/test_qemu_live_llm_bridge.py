@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -15,6 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from qemu_live_llm_bridge import (
     build_error_payload,
+    call_provider,
     compact_json_or_error,
     detect_provider_from_request,
     resolve_provider,
@@ -76,6 +79,30 @@ class QemuLiveLlmBridgeTests(unittest.TestCase):
         )
         self.assertEqual(detect_provider_from_request(request), "openai")
 
+    def test_detect_provider_from_responses_shape(self) -> None:
+        request = json.dumps(
+            {
+                "model": "gpt-5.4",
+                "instructions": "You are helpful.",
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hi"}],
+                    }
+                ],
+                "tools": [
+                    {
+                        "type": "function",
+                        "name": "gpio_write",
+                        "description": "write pin",
+                        "parameters": {"type": "object"},
+                    }
+                ],
+            }
+        )
+        self.assertEqual(detect_provider_from_request(request), "azure-openai")
+
     def test_detect_provider_defaults_to_openai_for_invalid_json(self) -> None:
         self.assertEqual(detect_provider_from_request("not-json"), "openai")
 
@@ -98,6 +125,28 @@ class QemuLiveLlmBridgeTests(unittest.TestCase):
         )
         self.assertEqual(resolve_provider("auto", request), "openai")
         self.assertEqual(resolve_provider("anthropic", request), "anthropic")
+
+    def test_resolve_provider_auto_detects_responses_shape(self) -> None:
+        request = json.dumps(
+            {
+                "model": "gpt-5.4",
+                "instructions": "x",
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "hi"}],
+                    }
+                ],
+            }
+        )
+        self.assertEqual(resolve_provider("auto", request), "azure-openai")
+
+    def test_call_provider_azure_openai_requires_env_vars(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            payload = json.loads(call_provider("azure-openai", "{}", 1))
+        self.assertIn("error", payload)
+        self.assertIn("AZURE_OPENAI_API_KEY", payload["error"]["message"])
 
 
 if __name__ == "__main__":

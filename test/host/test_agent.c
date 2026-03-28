@@ -256,6 +256,62 @@ TEST(channel_output_allows_long_response)
     return 0;
 }
 
+TEST(responses_tool_followup_uses_previous_response_id)
+{
+    QueueHandle_t channel_q;
+    char text[CHANNEL_TX_BUF_SIZE];
+    const char *tool_call_response =
+        "{"
+            "\"id\":\"resp_tool_1\","
+            "\"output\":["
+                "{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[]},"
+                "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
+                    "\"content\":[{\"type\":\"output_text\",\"text\":\"Let me check.\"}]},"
+                "{\"id\":\"fc_1\",\"type\":\"function_call\",\"call_id\":\"call_resp_1\","
+                    "\"name\":\"gpio_write\",\"arguments\":\"{\\\"pin\\\":2,\\\"state\\\":1}\"}"
+            "],"
+            "\"status\":\"in_progress\""
+        "}";
+    const char *final_response =
+        "{"
+            "\"id\":\"resp_final_1\","
+            "\"output\":["
+                "{\"type\":\"message\",\"role\":\"assistant\","
+                    "\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]}"
+            "],"
+            "\"output_text\":\"done\","
+            "\"status\":\"completed\""
+        "}";
+    const char *last_request = NULL;
+
+    reset_state();
+    mock_llm_set_backend(LLM_BACKEND_AZURE_OPENAI, "gpt-5.4");
+
+    channel_q = xQueueCreate(4, sizeof(channel_output_msg_t));
+    ASSERT(channel_q != NULL);
+    agent_test_set_queues(channel_q, NULL);
+
+    ASSERT(mock_llm_push_result(ESP_OK, tool_call_response));
+    ASSERT(mock_llm_push_result(ESP_OK, final_response));
+
+    agent_test_process_message("turn on gpio 2");
+
+    ASSERT(mock_llm_request_count() == 2);
+    ASSERT(mock_tools_execute_calls() == 1);
+    ASSERT(recv_channel_text(channel_q, text, sizeof(text)) == 1);
+    ASSERT_STR_EQ(text, "done");
+
+    last_request = mock_llm_last_request_json();
+    ASSERT(last_request != NULL);
+    ASSERT(strstr(last_request, "\"previous_response_id\":\"resp_tool_1\"") != NULL);
+    ASSERT(strstr(last_request, "\"type\":\"function_call_output\",\"call_id\":\"call_resp_1\",\"output\":\"mock tool executed\"") != NULL);
+    ASSERT(strstr(last_request, "\"type\":\"reasoning\"") == NULL);
+    ASSERT(strstr(last_request, "\"type\":\"function_call\",\"call_id\":\"call_resp_1\"") == NULL);
+
+    vQueueDelete(channel_q);
+    return 0;
+}
+
 TEST(start_command_bypasses_llm_and_debounces)
 {
     QueueHandle_t channel_q;
@@ -957,6 +1013,13 @@ int test_agent_all(void)
 
     printf("  channel_output_allows_long_response... ");
     if (test_channel_output_allows_long_response() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  responses_tool_followup_uses_previous_response_id... ");
+    if (test_responses_tool_followup_uses_previous_response_id() == 0) {
         printf("OK\n");
     } else {
         failures++;

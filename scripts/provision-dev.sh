@@ -38,8 +38,8 @@ Overrides:
   --port <serial-port>
   --ssid <wifi-ssid>
   --pass <wifi-pass>
-  --backend <provider>   anthropic | openai | openrouter | ollama
-  --model <model-id>
+  --backend <provider>   anthropic | openai | azure-openai | openrouter | ollama
+  --model <model-id>      Model ID (Azure OpenAI uses deployment name)
   --api-key <key>
   --api-url <url>          Custom API endpoint URL
   --tg-token <token>
@@ -66,13 +66,16 @@ ZCLAW_PORT=/dev/cu.usbmodem1101
 ZCLAW_WIFI_SSID=YourWifi
 ZCLAW_WIFI_PASS=YourWifiPassword
 ZCLAW_BACKEND=openai
-ZCLAW_MODEL=gpt-5.4
+# Model ID for the selected backend.
+# For Azure OpenAI, set this to your deployment name; leave it blank until you know it.
+ZCLAW_MODEL=
 ZCLAW_API_URL=
 
 # Prefer setting one API key here:
 ZCLAW_API_KEY=
 # Or rely on provider env vars instead:
 # OPENAI_API_KEY=
+# AZURE_OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
 # OPENROUTER_API_KEY=
 # OLLAMA_API_KEY=
@@ -176,6 +179,9 @@ resolve_api_key() {
     case "$backend" in
         openai)
             printf '%s\n' "${OPENAI_API_KEY:-}"
+            ;;
+        azure-openai)
+            printf '%s\n' "${AZURE_OPENAI_API_KEY:-}"
             ;;
         anthropic)
             printf '%s\n' "${ANTHROPIC_API_KEY:-}"
@@ -354,6 +360,18 @@ fi
 if [ "$BACKEND" = "ollama" ] && [ -z "$API_URL" ]; then
     echo "Error: API URL not set for Ollama backend."
     echo "Set ZCLAW_API_URL in $ENV_FILE or pass --api-url."
+    exit 1
+fi
+
+if [ "$BACKEND" = "azure-openai" ] && [ -z "$API_URL" ]; then
+    echo "Error: API URL not set for Azure OpenAI backend."
+    echo "Set ZCLAW_API_URL in $ENV_FILE or pass --api-url."
+    exit 1
+fi
+
+if [ "$BACKEND" = "azure-openai" ] && [ -z "$MODEL" ]; then
+    echo "Error: model/deployment name not set for Azure OpenAI backend."
+    echo "Set ZCLAW_MODEL in $ENV_FILE or pass --model."
     exit 1
 fi
 

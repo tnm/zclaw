@@ -5,7 +5,7 @@
 // Buffer Sizes
 // -----------------------------------------------------------------------------
 #define LLM_REQUEST_BUF_SIZE    12288   // 12KB for outgoing JSON
-#define LLM_RESPONSE_BUF_SIZE   16384   // 16KB for incoming JSON
+#define LLM_RESPONSE_BUF_SIZE   32768   // 32KB for incoming JSON
 #define CHANNEL_RX_BUF_SIZE     512     // Input line buffer
 #define CHANNEL_TX_BUF_SIZE     1024    // Output response buffer for serial/web relay
 #define TOOL_RESULT_BUF_SIZE    512     // Tool execution result
@@ -45,8 +45,9 @@
 typedef enum {
     LLM_BACKEND_ANTHROPIC = 0,
     LLM_BACKEND_OPENAI = 1,
-    LLM_BACKEND_OPENROUTER = 2,
-    LLM_BACKEND_OLLAMA = 3,
+    LLM_BACKEND_AZURE_OPENAI = 2,
+    LLM_BACKEND_OPENROUTER = 3,
+    LLM_BACKEND_OLLAMA = 4,
 } llm_backend_t;
 
 #define LLM_API_URL_ANTHROPIC   "https://api.anthropic.com/v1/messages"
@@ -57,6 +58,7 @@ typedef enum {
 
 #define LLM_DEFAULT_MODEL_ANTHROPIC   "claude-sonnet-4-6"
 #define LLM_DEFAULT_MODEL_OPENAI      "gpt-5.4"
+#define LLM_DEFAULT_MODEL_AZURE_OPENAI ""
 #define LLM_DEFAULT_MODEL_OPENROUTER  "openrouter/auto"
 #define LLM_DEFAULT_MODEL_OLLAMA      "qwen3:8b"
 

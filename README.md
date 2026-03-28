@@ -75,7 +75,7 @@ Non-interactive install:
 - USB local admin console for recovery, safe mode, and pre-network bring-up
 - Persistent memory across reboots
 - Persona options: `neutral`, `friendly`, `technical`, `witty`
-- Provider support for Anthropic, OpenAI, OpenRouter, and Ollama (custom endpoint)
+- Provider support for Anthropic, OpenAI, Azure OpenAI, OpenRouter, and Ollama (custom endpoint)
 
 ## Hardware
 

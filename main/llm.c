@@ -44,6 +44,8 @@ static const char *llm_backend_name(llm_backend_t backend)
             return "Anthropic";
         case LLM_BACKEND_OPENAI:
             return "OpenAI";
+        case LLM_BACKEND_AZURE_OPENAI:
+            return "Azure OpenAI";
         case LLM_BACKEND_OPENROUTER:
             return "OpenRouter";
         case LLM_BACKEND_OLLAMA:
@@ -453,6 +455,9 @@ esp_err_t llm_init(void)
             s_backend = LLM_BACKEND_ANTHROPIC;
         } else if (strcmp(backend_str, "openai") == 0) {
             s_backend = LLM_BACKEND_OPENAI;
+        } else if (strcmp(backend_str, "azure-openai") == 0 ||
+                   strcmp(backend_str, "azure_openai") == 0) {
+            s_backend = LLM_BACKEND_AZURE_OPENAI;
         } else if (strcmp(backend_str, "openrouter") == 0) {
             s_backend = LLM_BACKEND_OPENROUTER;
         } else if (strcmp(backend_str, "ollama") == 0) {
@@ -498,8 +503,14 @@ esp_err_t llm_init(void)
     ESP_LOGI(TAG, "Backend: %s, Model: %s", llm_backend_name(s_backend), s_model);
     if (s_api_url_override[0] != '\0') {
         ESP_LOGI(TAG, "Using custom LLM API endpoint override");
+    } else if (s_backend == LLM_BACKEND_AZURE_OPENAI) {
+        ESP_LOGW(TAG, "Azure OpenAI backend requires llm_api_url to be configured");
     } else if (s_backend == LLM_BACKEND_OLLAMA) {
         ESP_LOGW(TAG, "Ollama backend using default loopback URL; set llm_api_url for network access");
+    }
+
+    if (s_model[0] == '\0' && s_backend == LLM_BACKEND_AZURE_OPENAI) {
+        ESP_LOGW(TAG, "Azure OpenAI backend requires llm_model to be configured");
     }
 
 #ifdef CONFIG_ZCLAW_STUB_LLM
@@ -535,6 +546,8 @@ const char *llm_get_api_url(void)
     switch (s_backend) {
         case LLM_BACKEND_OPENAI:
             return LLM_API_URL_OPENAI;
+        case LLM_BACKEND_AZURE_OPENAI:
+            return "";
         case LLM_BACKEND_OPENROUTER:
             return LLM_API_URL_OPENROUTER;
         case LLM_BACKEND_OLLAMA:
@@ -549,6 +562,8 @@ const char *llm_get_default_model(void)
     switch (s_backend) {
         case LLM_BACKEND_OPENAI:
             return LLM_DEFAULT_MODEL_OPENAI;
+        case LLM_BACKEND_AZURE_OPENAI:
+            return LLM_DEFAULT_MODEL_AZURE_OPENAI;
         case LLM_BACKEND_OPENROUTER:
             return LLM_DEFAULT_MODEL_OPENROUTER;
         case LLM_BACKEND_OLLAMA:
@@ -563,18 +578,26 @@ const char *llm_get_model(void)
     return s_model;
 }
 
-#if CONFIG_ZCLAW_STUB_LLM
 bool llm_stub_has_api_key_for_test(void)
 {
+#if CONFIG_ZCLAW_STUB_LLM
     return s_api_key[0] != '\0';
-}
+#else
+    return false;
 #endif
+}
 
 bool llm_is_openai_format(void)
 {
     return s_backend == LLM_BACKEND_OPENAI ||
+           s_backend == LLM_BACKEND_AZURE_OPENAI ||
            s_backend == LLM_BACKEND_OPENROUTER ||
            s_backend == LLM_BACKEND_OLLAMA;
+}
+
+bool llm_uses_responses_api(void)
+{
+    return s_backend == LLM_BACKEND_AZURE_OPENAI;
 }
 
 #ifdef CONFIG_ZCLAW_STUB_LLM
@@ -627,6 +650,11 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
 
     response_buf[0] = '\0';
 
+    if (llm_get_model()[0] == '\0') {
+        ESP_LOGE(TAG, "No model configured for backend %s", llm_backend_name(s_backend));
+        return ESP_ERR_INVALID_STATE;
+    }
+
 #if CONFIG_ZCLAW_EMULATOR_LIVE_LLM
     // In emulator bridge mode, delegate HTTPS API calls to a host-side proxy.
     esp_err_t bridge_err = channel_llm_bridge_exchange(request_json, response_buf, response_buf_size,
@@ -655,6 +683,14 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
 
     if (s_api_key[0] == '\0' && llm_backend_requires_api_key(s_backend)) {
         ESP_LOGE(TAG, "No API key configured");
+        capture_net_diag_snapshot(&snapshot_after);
+        log_http_diag("llm_request", NULL, ESP_ERR_INVALID_STATE, -1, 0, false,
+                      started_us, NULL, &snapshot_before, &snapshot_after);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (llm_get_api_url()[0] == '\0') {
+        ESP_LOGE(TAG, "No API URL configured for backend %s", llm_backend_name(s_backend));
         capture_net_diag_snapshot(&snapshot_after);
         log_http_diag("llm_request", NULL, ESP_ERR_INVALID_STATE, -1, 0, false,
                       started_us, NULL, &snapshot_before, &snapshot_after);
@@ -705,6 +741,8 @@ esp_err_t llm_request(const char *request_json, char *response_buf, size_t respo
     if (s_backend == LLM_BACKEND_ANTHROPIC) {
         esp_http_client_set_header(client, "x-api-key", s_api_key);
         esp_http_client_set_header(client, "anthropic-version", "2023-06-01");
+    } else if (s_backend == LLM_BACKEND_AZURE_OPENAI) {
+        esp_http_client_set_header(client, "api-key", s_api_key);
     } else if (s_backend == LLM_BACKEND_OPENAI || s_backend == LLM_BACKEND_OPENROUTER ||
                (s_backend == LLM_BACKEND_OLLAMA && s_api_key[0] != '\0')) {
         // OpenAI/OpenRouter use Bearer token. For Ollama, Bearer is optional and only sent

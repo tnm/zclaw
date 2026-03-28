@@ -72,6 +72,23 @@ TEST(loads_openrouter_backend_and_custom_model)
     return 0;
 }
 
+TEST(loads_azure_openai_backend_and_custom_url)
+{
+    configure_mock_store(
+        "azure-openai",
+        "demo-deployment",
+        "test-key",
+        "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+    );
+    ASSERT(llm_init() == ESP_OK);
+    ASSERT(llm_get_backend() == LLM_BACKEND_AZURE_OPENAI);
+    ASSERT(strcmp(llm_get_api_url(), "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview") == 0);
+    ASSERT(strcmp(llm_get_model(), "demo-deployment") == 0);
+    ASSERT(llm_is_openai_format());
+    ASSERT(llm_uses_responses_api());
+    return 0;
+}
+
 TEST(unknown_backend_falls_back_to_openai)
 {
     configure_mock_store("mystery_backend", NULL, "test-key", NULL);
@@ -114,6 +131,31 @@ TEST(loads_ollama_backend_with_default_model)
     ASSERT(strcmp(llm_get_api_url(), LLM_API_URL_OLLAMA) == 0);
     ASSERT(strcmp(llm_get_model(), LLM_DEFAULT_MODEL_OLLAMA) == 0);
     ASSERT(llm_is_openai_format());
+    return 0;
+}
+
+TEST(azure_openai_requires_explicit_api_url)
+{
+    configure_mock_store("azure-openai", NULL, "test-key", NULL);
+    ASSERT(llm_init() == ESP_OK);
+    ASSERT(strcmp(llm_get_api_url(), "") == 0);
+    ASSERT(strcmp(llm_get_model(), "") == 0);
+    ASSERT(llm_uses_responses_api());
+    return 0;
+}
+
+TEST(azure_openai_requires_explicit_model_for_requests)
+{
+    char response[LLM_RESPONSE_BUF_SIZE] = {0};
+
+    configure_mock_store(
+        "azure-openai",
+        NULL,
+        "test-key",
+        "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+    );
+    ASSERT(llm_init() == ESP_OK);
+    ASSERT(llm_request("{\"message\":\"hello\"}", response, sizeof(response)) == ESP_ERR_INVALID_STATE);
     return 0;
 }
 
@@ -164,6 +206,13 @@ int test_llm_runtime_all(void)
         failures++;
     }
 
+    printf("  loads_azure_openai_backend_and_custom_url... ");
+    if (test_loads_azure_openai_backend_and_custom_url() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
     printf("  unknown_backend_falls_back_to_openai... ");
     if (test_unknown_backend_falls_back_to_openai() == 0) {
         printf("OK\n");
@@ -187,6 +236,20 @@ int test_llm_runtime_all(void)
 
     printf("  loads_ollama_backend_with_default_model... ");
     if (test_loads_ollama_backend_with_default_model() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  azure_openai_requires_explicit_api_url... ");
+    if (test_azure_openai_requires_explicit_api_url() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  azure_openai_requires_explicit_model_for_requests... ");
+    if (test_azure_openai_requires_explicit_model_for_requests() == 0) {
         printf("OK\n");
     } else {
         failures++;

@@ -30,8 +30,20 @@ class ProviderHarnessTests(unittest.TestCase):
         self.assertEqual(field, "max_completion_tokens")
         self.assertEqual(value, 1024)
 
+    def test_openai_prefixed_gpt5_uses_max_completion_tokens(self) -> None:
+        field, value = provider_harness._openai_like_max_tokens_field("openai/gpt-5.2")
+        self.assertEqual(field, "max_completion_tokens")
+        self.assertEqual(value, 1024)
+
     def test_openai_non_gpt5_uses_max_tokens(self) -> None:
         field, value = provider_harness._openai_like_max_tokens_field("gpt-4.1-mini")
+        self.assertEqual(field, "max_tokens")
+        self.assertEqual(value, 1024)
+
+    def test_openai_prefixed_non_gpt5_uses_max_tokens(self) -> None:
+        field, value = provider_harness._openai_like_max_tokens_field(
+            "openai/gpt-4.1-mini"
+        )
         self.assertEqual(field, "max_tokens")
         self.assertEqual(value, 1024)
 
@@ -69,7 +81,7 @@ class ProviderHarnessTests(unittest.TestCase):
                                 "type": "function",
                                 "function": {
                                     "name": "gpio_write",
-                                    "arguments": "{\"pin\":2,\"state\":1}",
+                                    "arguments": '{"pin":2,"state":1}',
                                 },
                             }
                         ],
@@ -77,7 +89,9 @@ class ProviderHarnessTests(unittest.TestCase):
                 }
             ]
         }
-        text, tool_uses, done, assistant_msg = provider_harness._extract_openai_round(response)
+        text, tool_uses, done, assistant_msg = provider_harness._extract_openai_round(
+            response
+        )
         self.assertEqual(text, "")
         self.assertFalse(done)
         self.assertEqual(len(tool_uses), 1)
@@ -117,7 +131,9 @@ class ProviderHarnessTests(unittest.TestCase):
         messages = [{"role": "user", "content": "Hello"}]
         payload: dict[str, Any] = {}
 
-        def fake_post(url: str, headers: dict[str, str], json: dict[str, Any], timeout: int) -> Mock:
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
             payload["url"] = url
             payload["headers"] = headers
             payload["json"] = json
@@ -128,14 +144,21 @@ class ProviderHarnessTests(unittest.TestCase):
             return response
 
         with patch.object(provider_harness, "httpx", SimpleNamespace(post=fake_post)):
-            result = provider_harness.call_api(provider, messages, "test-key", "gpt-4.1-mini", user_tools=[])
+            result = provider_harness.call_api(
+                provider, messages, "test-key", "gpt-4.1-mini", user_tools=[]
+            )
 
         self.assertEqual(result, {"ok": True})
         self.assertEqual(payload["url"], provider.api_url)
         self.assertEqual(payload["timeout"], 30)
         request_json = payload["json"]
-        self.assertEqual(request_json["messages"][0], {"role": "system", "content": provider_harness.SYSTEM_PROMPT})
-        self.assertEqual(request_json["messages"][1], {"role": "user", "content": "Hello"})
+        self.assertEqual(
+            request_json["messages"][0],
+            {"role": "system", "content": provider_harness.SYSTEM_PROMPT},
+        )
+        self.assertEqual(
+            request_json["messages"][1], {"role": "user", "content": "Hello"}
+        )
         self.assertEqual(messages, [{"role": "user", "content": "Hello"}])
 
     def test_call_api_openai_keeps_existing_system_message(self) -> None:
@@ -146,7 +169,9 @@ class ProviderHarnessTests(unittest.TestCase):
         ]
         payload: dict[str, Any] = {}
 
-        def fake_post(url: str, headers: dict[str, str], json: dict[str, Any], timeout: int) -> Mock:
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
             payload["url"] = url
             payload["headers"] = headers
             payload["json"] = json
@@ -157,10 +182,218 @@ class ProviderHarnessTests(unittest.TestCase):
             return response
 
         with patch.object(provider_harness, "httpx", SimpleNamespace(post=fake_post)):
-            provider_harness.call_api(provider, messages, "test-key", "gpt-4.1-mini", user_tools=[])
+            provider_harness.call_api(
+                provider, messages, "test-key", "gpt-4.1-mini", user_tools=[]
+            )
 
         request_json = payload["json"]
         self.assertEqual(request_json["messages"], messages)
+
+    def test_call_api_openrouter_prefixed_gpt5_uses_max_completion_tokens(self) -> None:
+        provider = provider_harness.PROVIDERS["openrouter"]
+        messages = [{"role": "user", "content": "Hello"}]
+        payload: dict[str, Any] = {}
+
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
+            payload["url"] = url
+            payload["headers"] = headers
+            payload["json"] = json
+            payload["timeout"] = timeout
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"ok": True}
+            return response
+
+        with patch.object(provider_harness, "httpx", SimpleNamespace(post=fake_post)):
+            result = provider_harness.call_api(
+                provider, messages, "test-key", "openai/gpt-5.2", user_tools=[]
+            )
+
+        self.assertEqual(result, {"ok": True})
+        request_json = payload["json"]
+        self.assertEqual(request_json["model"], "openai/gpt-5.2")
+        self.assertEqual(request_json["max_completion_tokens"], 1024)
+        self.assertNotIn("max_tokens", request_json)
+
+    def test_call_api_azure_openai_uses_api_key_header_and_env_url(self) -> None:
+        provider = provider_harness.PROVIDERS["azure-openai"]
+        messages = [{"role": "user", "content": "Hello"}]
+        payload: dict[str, Any] = {}
+
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
+            payload["url"] = url
+            payload["headers"] = headers
+            payload["json"] = json
+            payload["timeout"] = timeout
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"ok": True}
+            return response
+
+        with patch.dict(
+            provider_harness.os.environ,
+            {
+                "AZURE_OPENAI_API_URL": "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            },
+            clear=False,
+        ):
+            with patch.object(
+                provider_harness, "httpx", SimpleNamespace(post=fake_post)
+            ):
+                result = provider_harness.call_api(
+                    provider, messages, "test-key", "demo", user_tools=[]
+                )
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(
+            payload["url"],
+            "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+        )
+        self.assertEqual(payload["headers"]["api-key"], "test-key")
+        self.assertNotIn("Authorization", payload["headers"])
+        self.assertEqual(
+            payload["json"]["input"][0],
+            {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "Hello"}],
+            },
+        )
+        self.assertEqual(
+            payload["json"]["instructions"], provider_harness.SYSTEM_PROMPT
+        )
+        self.assertEqual(payload["json"]["parallel_tool_calls"], False)
+        self.assertEqual(payload["json"]["reasoning"], {"effort": "low"})
+        self.assertEqual(payload["json"]["tools"][0]["type"], "function")
+        self.assertIn("name", payload["json"]["tools"][0])
+
+    def test_extract_responses_round_function_call(self) -> None:
+        response = {
+            "status": "completed",
+            "output": [
+                {
+                    "type": "function_call",
+                    "call_id": "call_123",
+                    "name": "gpio_write",
+                    "arguments": '{"pin":2,"state":1}',
+                }
+            ],
+        }
+
+        text, tool_uses, done, assistant_items = (
+            provider_harness._extract_responses_round(response)
+        )
+        self.assertEqual(text, "")
+        self.assertFalse(done)
+        self.assertEqual(len(tool_uses), 1)
+        self.assertEqual(tool_uses[0]["name"], "gpio_write")
+        self.assertEqual(tool_uses[0]["input"]["pin"], 2)
+        self.assertEqual(assistant_items[0]["type"], "function_call")
+
+    def test_extract_responses_round_preserves_reasoning_items(self) -> None:
+        response = {
+            "status": "completed",
+            "output": [
+                {"id": "rs_123", "type": "reasoning", "summary": []},
+                {
+                    "type": "function_call",
+                    "call_id": "call_123",
+                    "name": "gpio_write",
+                    "arguments": '{"pin":2,"state":1}',
+                },
+            ],
+        }
+
+        _, tool_uses, done, assistant_items = provider_harness._extract_responses_round(
+            response
+        )
+        self.assertFalse(done)
+        self.assertEqual(len(tool_uses), 1)
+        self.assertEqual(len(assistant_items), 2)
+        self.assertEqual(assistant_items[0]["type"], "reasoning")
+        self.assertEqual(assistant_items[1]["type"], "function_call")
+
+    def test_call_api_azure_openai_encodes_assistant_history_as_output_text(
+        self,
+    ) -> None:
+        provider = provider_harness.PROVIDERS["azure-openai"]
+        messages = [
+            {"role": "assistant", "content": "Earlier answer"},
+            {"role": "user", "content": "Next question"},
+        ]
+        payload: dict[str, Any] = {}
+
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
+            payload["json"] = json
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"ok": True}
+            return response
+
+        with patch.dict(
+            provider_harness.os.environ,
+            {
+                "AZURE_OPENAI_API_URL": "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            },
+            clear=False,
+        ):
+            with patch.object(
+                provider_harness, "httpx", SimpleNamespace(post=fake_post)
+            ):
+                provider_harness.call_api(
+                    provider, messages, "test-key", "demo", user_tools=[]
+                )
+
+        self.assertEqual(
+            payload["json"]["input"][0]["content"][0]["type"], "output_text"
+        )
+        self.assertEqual(
+            payload["json"]["input"][1]["content"][0]["type"], "input_text"
+        )
+
+    def test_call_api_azure_openai_preserves_raw_response_items(self) -> None:
+        provider = provider_harness.PROVIDERS["azure-openai"]
+        messages = [
+            {"id": "rs_123", "type": "reasoning", "summary": []},
+            {
+                "type": "function_call_output",
+                "call_id": "call_123",
+                "output": "ok",
+            },
+        ]
+        payload: dict[str, Any] = {}
+
+        def fake_post(
+            url: str, headers: dict[str, str], json: dict[str, Any], timeout: int
+        ) -> Mock:
+            payload["json"] = json
+            response = Mock()
+            response.raise_for_status.return_value = None
+            response.json.return_value = {"ok": True}
+            return response
+
+        with patch.dict(
+            provider_harness.os.environ,
+            {
+                "AZURE_OPENAI_API_URL": "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            },
+            clear=False,
+        ):
+            with patch.object(
+                provider_harness, "httpx", SimpleNamespace(post=fake_post)
+            ):
+                provider_harness.call_api(
+                    provider, messages, "test-key", "demo", user_tools=[]
+                )
+
+        self.assertEqual(payload["json"]["input"][0]["type"], "reasoning")
+        self.assertEqual(payload["json"]["input"][1]["type"], "function_call_output")
 
 
 if __name__ == "__main__":

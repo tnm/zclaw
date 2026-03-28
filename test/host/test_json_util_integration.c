@@ -47,7 +47,7 @@ TEST(build_anthropic_request)
     mock_llm_set_backend(LLM_BACKEND_ANTHROPIC, "claude-test-model");
 
     char *request = json_build_request("sys prompt", NULL, 0, "hello",
-                                       s_test_tools, 1);
+                                       s_test_tools, 1, NULL);
     ASSERT(request != NULL);
 
     cJSON *root = cJSON_Parse(request);
@@ -83,7 +83,7 @@ TEST(build_openai_request)
     mock_llm_set_backend(LLM_BACKEND_OPENAI, "gpt-5.4");
 
     char *request = json_build_request("sys prompt", NULL, 0, "hello",
-                                       s_test_tools, 1);
+                                       s_test_tools, 1, NULL);
     ASSERT(request != NULL);
 
     cJSON *root = cJSON_Parse(request);
@@ -130,7 +130,7 @@ TEST(build_openrouter_request)
     mock_llm_set_backend(LLM_BACKEND_OPENROUTER, "openrouter-test-model");
 
     char *request = json_build_request("sys prompt", NULL, 0, "hello",
-                                       s_test_tools, 1);
+                                       s_test_tools, 1, NULL);
     ASSERT(request != NULL);
 
     cJSON *root = cJSON_Parse(request);
@@ -151,7 +151,7 @@ TEST(build_azure_openai_request)
     mock_llm_set_backend(LLM_BACKEND_AZURE_OPENAI, "azure/gpt-5-mini");
 
     char *request = json_build_request("sys prompt", NULL, 0, "hello",
-                                       s_test_tools, 1);
+                                       s_test_tools, 1, NULL);
     ASSERT(request != NULL);
 
     cJSON *root = cJSON_Parse(request);
@@ -200,6 +200,40 @@ TEST(build_azure_openai_request)
     return 0;
 }
 
+TEST(build_azure_openai_request_with_previous_response_id)
+{
+    mock_llm_set_backend(LLM_BACKEND_AZURE_OPENAI, "azure/gpt-5-mini");
+
+    conversation_msg_t history[1] = {0};
+    strncpy(history[0].role, "user", sizeof(history[0].role) - 1);
+    strncpy(history[0].content, "hello again", sizeof(history[0].content) - 1);
+
+    char *request = json_build_request("sys prompt", history, 1, NULL,
+                                       s_test_tools, 1, "resp_prev_123");
+    ASSERT(request != NULL);
+
+    cJSON *root = cJSON_Parse(request);
+    ASSERT(root != NULL);
+
+    cJSON *previous_response_id = cJSON_GetObjectItem(root, "previous_response_id");
+    ASSERT(previous_response_id != NULL && cJSON_IsString(previous_response_id));
+    ASSERT_STR_EQ(previous_response_id->valuestring, "resp_prev_123");
+
+    cJSON *input = cJSON_GetObjectItem(root, "input");
+    ASSERT(input != NULL && cJSON_IsArray(input));
+    ASSERT(cJSON_GetArraySize(input) == 1);
+
+    cJSON *first = cJSON_GetArrayItem(input, 0);
+    ASSERT(first != NULL);
+    cJSON *role = cJSON_GetObjectItem(first, "role");
+    ASSERT(role != NULL && cJSON_IsString(role));
+    ASSERT_STR_EQ(role->valuestring, "user");
+
+    cJSON_Delete(root);
+    free(request);
+    return 0;
+}
+
 TEST(build_openai_request_skips_orphan_tool_result)
 {
     mock_llm_set_backend(LLM_BACKEND_OPENAI, "gpt-test-model");
@@ -214,7 +248,7 @@ TEST(build_openai_request_skips_orphan_tool_result)
     strncpy(history[1].role, "user", sizeof(history[1].role) - 1);
     strncpy(history[1].content, "remember my name is Ted", sizeof(history[1].content) - 1);
 
-    char *request = json_build_request("sys prompt", history, 2, NULL, s_test_tools, 1);
+    char *request = json_build_request("sys prompt", history, 2, NULL, s_test_tools, 1, NULL);
     ASSERT(request != NULL);
 
     cJSON *root = cJSON_Parse(request);
@@ -432,6 +466,13 @@ int test_json_util_integration_all(void)
 
     printf("  build_azure_openai_request... ");
     if (test_build_azure_openai_request() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  build_azure_openai_request_with_previous_response_id... ");
+    if (test_build_azure_openai_request_with_previous_response_id() == 0) {
         printf("OK\n");
     } else {
         failures++;

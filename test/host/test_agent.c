@@ -256,12 +256,13 @@ TEST(channel_output_allows_long_response)
     return 0;
 }
 
-TEST(responses_tool_followup_preserves_all_output_items)
+TEST(responses_tool_followup_uses_previous_response_id)
 {
     QueueHandle_t channel_q;
     char text[CHANNEL_TX_BUF_SIZE];
     const char *tool_call_response =
         "{"
+            "\"id\":\"resp_tool_1\","
             "\"output\":["
                 "{\"id\":\"rs_1\",\"type\":\"reasoning\",\"summary\":[]},"
                 "{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\","
@@ -273,6 +274,7 @@ TEST(responses_tool_followup_preserves_all_output_items)
         "}";
     const char *final_response =
         "{"
+            "\"id\":\"resp_final_1\","
             "\"output\":["
                 "{\"type\":\"message\",\"role\":\"assistant\","
                     "\"content\":[{\"type\":\"output_text\",\"text\":\"done\"}]}"
@@ -301,10 +303,10 @@ TEST(responses_tool_followup_preserves_all_output_items)
 
     last_request = mock_llm_last_request_json();
     ASSERT(last_request != NULL);
-    ASSERT(strstr(last_request, "\"type\":\"reasoning\"") != NULL);
-    ASSERT(strstr(last_request, "\"type\":\"message\",\"role\":\"assistant\"") != NULL);
-    ASSERT(strstr(last_request, "\"type\":\"function_call\",\"call_id\":\"call_resp_1\"") != NULL);
+    ASSERT(strstr(last_request, "\"previous_response_id\":\"resp_tool_1\"") != NULL);
     ASSERT(strstr(last_request, "\"type\":\"function_call_output\",\"call_id\":\"call_resp_1\",\"output\":\"mock tool executed\"") != NULL);
+    ASSERT(strstr(last_request, "\"type\":\"reasoning\"") == NULL);
+    ASSERT(strstr(last_request, "\"type\":\"function_call\",\"call_id\":\"call_resp_1\"") == NULL);
 
     vQueueDelete(channel_q);
     return 0;
@@ -1016,8 +1018,8 @@ int test_agent_all(void)
         failures++;
     }
 
-    printf("  responses_tool_followup_preserves_all_output_items... ");
-    if (test_responses_tool_followup_preserves_all_output_items() == 0) {
+    printf("  responses_tool_followup_uses_previous_response_id... ");
+    if (test_responses_tool_followup_uses_previous_response_id() == 0) {
         printf("OK\n");
     } else {
         failures++;

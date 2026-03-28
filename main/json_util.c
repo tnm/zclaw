@@ -614,7 +614,8 @@ static char *build_responses_api_request(
     int history_len,
     const char *user_message,
     const tool_def_t *tools,
-    int tool_count)
+    int tool_count,
+    const char *previous_response_id)
 {
     cJSON *root = cJSON_CreateObject();
     cJSON *input = NULL;
@@ -626,6 +627,11 @@ static char *build_responses_api_request(
         !cJSON_AddStringToObject(root, "instructions", system_prompt) ||
         !cJSON_AddBoolToObject(root, "parallel_tool_calls", false) ||
         !cJSON_AddNumberToObject(root, "max_output_tokens", LLM_MAX_TOKENS)) {
+        goto fail;
+    }
+
+    if (previous_response_id && previous_response_id[0] != '\0' &&
+        !cJSON_AddStringToObject(root, "previous_response_id", previous_response_id)) {
         goto fail;
     }
 
@@ -646,7 +652,8 @@ static char *build_responses_api_request(
         } else if (history[i].is_tool_use) {
             item = create_responses_function_call_item(&history[i]);
         } else if (history[i].is_tool_result) {
-            if (!history_has_prior_tool_use(history, i, history[i].tool_id)) {
+            if ((!previous_response_id || previous_response_id[0] == '\0') &&
+                !history_has_prior_tool_use(history, i, history[i].tool_id)) {
                 ESP_LOGW(TAG, "Skipping orphan tool_result in history[%d] (id=%s)",
                          i, history[i].tool_id);
                 continue;
@@ -814,13 +821,15 @@ char *json_build_request(
     int history_len,
     const char *user_message,
     const tool_def_t *tools,
-    int tool_count)
+    int tool_count,
+    const char *previous_response_id)
 {
     char *json_str;
 
     if (llm_uses_responses_api()) {
         json_str = build_responses_api_request(system_prompt, history, history_len,
-                                               user_message, tools, tool_count);
+                                               user_message, tools, tool_count,
+                                               previous_response_id);
     } else if (llm_is_openai_format()) {
         json_str = build_openai_request(system_prompt, history, history_len,
                                          user_message, tools, tool_count);

@@ -44,6 +44,7 @@ static char s_test_persona_value[16] = {0};
 // Conversation history (rolling message buffer)
 static conversation_msg_t s_history[MAX_HISTORY_TURNS * 2];
 static int s_history_len = 0;
+static char s_responses_previous_response_id[128] = {0};
 
 // Buffers (static to avoid stack overflow)
 static char s_response_buf[LLM_RESPONSE_BUF_SIZE];
@@ -145,6 +146,18 @@ static void history_add(const char *role, const char *content,
 static void history_add_response_item(const char *item_json)
 {
     history_add("assistant", item_json, false, false, true, NULL, NULL);
+}
+
+static void responses_set_previous_response_id(const char *response_id)
+{
+    if (!response_id) {
+        s_responses_previous_response_id[0] = '\0';
+        return;
+    }
+
+    strncpy(s_responses_previous_response_id, response_id,
+            sizeof(s_responses_previous_response_id) - 1);
+    s_responses_previous_response_id[sizeof(s_responses_previous_response_id) - 1] = '\0';
 }
 
 static void queue_channel_response(const char *text)
@@ -407,6 +420,7 @@ static void process_message(const char *user_message, message_source_t source, i
 {
     ESP_LOGI(TAG, "Processing: %s", user_message);
     int history_turn_start = s_history_len;
+    char previous_response_id_turn_start[sizeof(s_responses_previous_response_id)] = {0};
     bool is_non_command_message = !agent_is_slash_command(user_message);
     bool is_cron_trigger = agent_is_cron_trigger_message(user_message);
     bool telegram_polling_paused = false;
@@ -418,6 +432,10 @@ static void process_message(const char *user_message, message_source_t source, i
         .tool_calls = 0,
         .rounds = 0,
     };
+
+    strncpy(previous_response_id_turn_start, s_responses_previous_response_id,
+            sizeof(previous_response_id_turn_start) - 1);
+    previous_response_id_turn_start[sizeof(previous_response_id_turn_start) - 1] = '\0';
 
     if (agent_is_command(user_message, "resume")) {
         if (!s_messages_paused) {
@@ -517,19 +535,32 @@ static void process_message(const char *user_message, message_source_t source, i
         rounds++;
         metrics.rounds = rounds;
 
+        // Azure/OpenAI Responses requests can chain from the server-side response id,
+        // so only send the latest delta item once we have one.
+        const conversation_msg_t *request_history = s_history;
+        int request_history_len = s_history_len;
+        const char *previous_response_id = NULL;
+        if (llm_uses_responses_api() && s_responses_previous_response_id[0] != '\0') {
+            previous_response_id = s_responses_previous_response_id;
+            request_history = &s_history[s_history_len - 1];
+            request_history_len = 1;
+        }
+
         // Build request JSON (user message already in history)
         char *request = json_build_request(
             agent_build_system_prompt(s_persona, s_system_prompt_buf, sizeof(s_system_prompt_buf)),
-            s_history,
-            s_history_len,
+            request_history,
+            request_history_len,
             NULL,  // User message already in history
             tools,
-            tool_count
+            tool_count,
+            previous_response_id
         );
 
         if (!request) {
             ESP_LOGE(TAG, "Failed to build request JSON");
             history_rollback_to(history_turn_start, "request build failed");
+            responses_set_previous_response_id(previous_response_id_turn_start);
             send_response("Error: Failed to build request", reply_chat_id);
             telegram_resume_polling();
             telegram_polling_paused = false;
@@ -544,6 +575,7 @@ static void process_message(const char *user_message, message_source_t source, i
         if (!ratelimit_check(rate_reason, sizeof(rate_reason))) {
             free(request);
             history_rollback_to(history_turn_start, "rate limited");
+            responses_set_previous_response_id(previous_response_id_turn_start);
             send_response(rate_reason, reply_chat_id);
             telegram_resume_polling();
             telegram_polling_paused = false;
@@ -615,6 +647,7 @@ static void process_message(const char *user_message, message_source_t source, i
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "LLM request failed after %d retries", LLM_MAX_RETRIES);
             history_rollback_to(history_turn_start, "llm request failed");
+            responses_set_previous_response_id(previous_response_id_turn_start);
             send_response("Error: Failed to contact LLM API after retries", reply_chat_id);
             telegram_resume_polling();
             telegram_polling_paused = false;
@@ -637,12 +670,22 @@ static void process_message(const char *user_message, message_source_t source, i
                                   &tool_input)) {
             ESP_LOGE(TAG, "Failed to parse response");
             history_rollback_to(history_turn_start, "llm response parse failed");
+            responses_set_previous_response_id(previous_response_id_turn_start);
             send_response("Error: Failed to parse LLM response", reply_chat_id);
             json_free_parsed_response();
             telegram_resume_polling();
             telegram_polling_paused = false;
             metrics_log_request(&metrics, "parse_error");
             return;
+        }
+
+        if (llm_uses_responses_api()) {
+            const cJSON *parsed = json_get_parsed_response();
+            const cJSON *response_id = parsed ? cJSON_GetObjectItem((cJSON *)parsed, "id") : NULL;
+            if (response_id && cJSON_IsString((cJSON *)response_id) &&
+                response_id->valuestring[0] != '\0') {
+                responses_set_previous_response_id(response_id->valuestring);
+            }
         }
 
         // Check if it's a tool use
@@ -655,27 +698,30 @@ static void process_message(const char *user_message, message_source_t source, i
             if (llm_uses_responses_api()) {
                 const cJSON *parsed = json_get_parsed_response();
                 const cJSON *output = parsed ? cJSON_GetObjectItem((cJSON *)parsed, "output") : NULL;
-                const cJSON *item = NULL;
-                if (output && cJSON_IsArray(output)) {
-                    cJSON_ArrayForEach(item, output) {
-                        if (!cJSON_IsObject((cJSON *)item)) {
-                            continue;
-                        }
+                const cJSON *response_id = parsed ? cJSON_GetObjectItem((cJSON *)parsed, "id") : NULL;
+                if (!(response_id && cJSON_IsString((cJSON *)response_id) &&
+                      response_id->valuestring[0] != '\0')) {
+                    const cJSON *item = NULL;
+                    if (output && cJSON_IsArray(output)) {
+                        cJSON_ArrayForEach(item, output) {
+                            if (!cJSON_IsObject((cJSON *)item)) {
+                                continue;
+                            }
 
-                        // Preserve every raw Responses output item for the next turn.
-                        // OpenAI's Responses tool-calling flow expects the model's prior
-                        // output items (especially reasoning and tool calls) to be fed
-                        // back alongside function_call_output items.
-                        cJSON *copy = cJSON_Duplicate((cJSON *)item, 1);
-                        char *item_json = NULL;
-                        if (copy) {
-                            cJSON_DeleteItemFromObject(copy, "_parsed_arguments");
-                            item_json = cJSON_PrintUnformatted(copy);
-                            cJSON_Delete(copy);
-                        }
-                        if (item_json) {
-                            history_add_response_item(item_json);
-                            free(item_json);
+                            // Fallback for Responses payloads that do not provide a
+                            // top-level response id. In that case we still need to replay
+                            // the prior raw output items to preserve reasoning state.
+                            cJSON *copy = cJSON_Duplicate((cJSON *)item, 1);
+                            char *item_json = NULL;
+                            if (copy) {
+                                cJSON_DeleteItemFromObject(copy, "_parsed_arguments");
+                                item_json = cJSON_PrintUnformatted(copy);
+                                cJSON_Delete(copy);
+                            }
+                            if (item_json) {
+                                history_add_response_item(item_json);
+                                free(item_json);
+                            }
                         }
                     }
                 }
@@ -742,6 +788,7 @@ static void process_message(const char *user_message, message_source_t source, i
 
     if (!done) {
         ESP_LOGW(TAG, "Max tool rounds reached");
+        responses_set_previous_response_id(previous_response_id_turn_start);
         history_add("assistant", "(Reached max tool iterations)", false, false, false, NULL, NULL);
         send_response("(Reached max tool iterations)", reply_chat_id);
         telegram_resume_polling();
@@ -768,6 +815,7 @@ void agent_test_reset(void)
 {
     memset(s_history, 0, sizeof(s_history));
     s_history_len = 0;
+    memset(s_responses_previous_response_id, 0, sizeof(s_responses_previous_response_id));
     memset(s_response_buf, 0, sizeof(s_response_buf));
     memset(s_tool_result_buf, 0, sizeof(s_tool_result_buf));
     s_channel_output_queue = NULL;

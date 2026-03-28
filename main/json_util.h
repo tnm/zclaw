@@ -27,7 +27,8 @@ char *json_build_request(
     int history_len,
     const char *user_message,
     const struct tool_def *tools,
-    int tool_count
+    int tool_count,
+    const char *previous_response_id
 );
 
 // Parse the API response, extracting:

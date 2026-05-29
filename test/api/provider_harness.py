@@ -328,6 +328,14 @@ PROVIDERS = {
         api_key_env="OPENROUTER_API_KEY",
         wire_format="openai",
     ),
+    "volcengine": ProviderConfig(
+        name="volcengine",
+        api_url="https://ark.cn-beijing.volces.com/api/v3/chat/completions",
+        default_model="doubao-1-5-pro-32k-250115",
+        model_env="VOLCENGINE_MODEL",
+        api_key_env="VOLCENGINE_API_KEY",
+        wire_format="openai",
+    ),
 }
 
 

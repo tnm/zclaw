@@ -117,6 +117,17 @@ TEST(loads_ollama_backend_with_default_model)
     return 0;
 }
 
+TEST(loads_volcengine_backend_and_default_model)
+{
+    configure_mock_store("volcengine", NULL, "test-ark-key", NULL);
+    ASSERT(llm_init() == ESP_OK);
+    ASSERT(llm_get_backend() == LLM_BACKEND_VOLCENGINE);
+    ASSERT(strcmp(llm_get_api_url(), LLM_API_URL_VOLCENGINE) == 0);
+    ASSERT(strcmp(llm_get_model(), LLM_DEFAULT_MODEL_VOLCENGINE) == 0);
+    ASSERT(llm_is_openai_format());
+    return 0;
+}
+
 TEST(custom_api_url_override_applies_to_any_backend)
 {
     configure_mock_store("openai", NULL, "test-key", "http://192.168.1.50:11434/v1/chat/completions");
@@ -187,6 +198,13 @@ int test_llm_runtime_all(void)
 
     printf("  loads_ollama_backend_with_default_model... ");
     if (test_loads_ollama_backend_with_default_model() == 0) {
+        printf("OK\n");
+    } else {
+        failures++;
+    }
+
+    printf("  loads_volcengine_backend_and_default_model... ");
+    if (test_loads_volcengine_backend_and_default_model() == 0) {
         printf("OK\n");
     } else {
         failures++;

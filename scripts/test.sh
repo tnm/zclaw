@@ -63,6 +63,7 @@ run_host_tests() {
         test_agent.c \
         test_tools_gpio_policy.c \
         test_tools_i2c_policy.c \
+        test_tools_bh1750.c \
         test_tools_dht.c \
         test_builtin_tools_registry.c \
         test_tools_system_diag.c \

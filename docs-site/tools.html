@@ -61,7 +61,7 @@
               <tr><th>Group</th><th>Tools</th><th>Use</th></tr>
             </thead>
             <tbody>
-              <tr><td>Hardware</td><td><code>gpio_write</code>, <code>gpio_read</code>, <code>gpio_read_all</code>, <code>delay</code>, <code>i2c_scan</code>, <code>i2c_write</code>, <code>i2c_read</code>, <code>i2c_write_read</code>, <code>dht_read</code></td><td>Pins, timing-sensitive sensors, and generic I2C bus transactions (including one-call full GPIO state reads).</td></tr>
+              <tr><td>Hardware</td><td><code>gpio_write</code>, <code>gpio_read</code>, <code>gpio_read_all</code>, <code>delay</code>, <code>i2c_scan</code>, <code>i2c_write</code>, <code>i2c_read</code>, <code>i2c_write_read</code>, <code>bh1750_read</code>, <code>dht_read</code></td><td>Pins, typed sensor reads, timing-sensitive sensors, and generic I2C bus transactions (including one-call full GPIO state reads).</td></tr>
               <tr><td>Memory</td><td><code>memory_set</code>, <code>memory_get</code>, <code>memory_list</code>, <code>memory_delete</code></td><td>Persistent user state (<code>u_*</code> keys).</td></tr>
               <tr><td>Schedules</td><td><code>cron_set</code>, <code>cron_list</code>, <code>cron_delete</code></td><td>Periodic, daily, and one-shot jobs.</td></tr>
               <tr><td>Clock</td><td><code>get_time</code>, <code>set_timezone</code>, <code>get_timezone</code></td><td>Timezone-aware schedule behavior.</td></tr>
@@ -80,8 +80,10 @@
             <li><code>i2c_write</code> sends space-separated hex bytes to one 7-bit address.</li>
             <li><code>i2c_read</code> reads raw bytes from one 7-bit address.</li>
             <li><code>i2c_write_read</code> writes first, then reads from the same address. Use this for register reads.</li>
+            <li><code>bh1750_read</code> is a typed ambient-light read for the BH1750. It defaults to address <code>35</code> (<code>0x23</code>) and also supports <code>92</code> (<code>0x5C</code>).</li>
           </ul>
           <pre>{"sda_pin":8,"scl_pin":9,"address":118,"write_hex":"0xD0","read_length":1}</pre>
+          <pre>{"sda_pin":8,"scl_pin":9}</pre>
           <pre>{"pin":5,"model":"dht22"}</pre>
           <p class="inline-note">Hex payload fields accept space-separated bytes such as <code>0xF4 0x2E</code>. Tool JSON uses decimal I2C addresses, so <code>118</code> means <code>0x76</code>.</p>
         </section>

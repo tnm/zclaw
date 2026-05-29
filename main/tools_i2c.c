@@ -4,6 +4,7 @@
 #include "driver/i2c.h"
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,6 +21,11 @@
 #define I2C_ADDR_TIMEOUT_MS          25
 #define I2C_IO_TIMEOUT_MS            1000
 #define I2C_MAX_DATA_BYTES           64
+#define BH1750_DEFAULT_ADDRESS       0x23
+#define BH1750_ALT_ADDRESS           0x5C
+#define BH1750_POWER_ON              0x01
+#define BH1750_ONE_TIME_H_RES_MODE   0x20
+#define BH1750_MEASUREMENT_DELAY_MS  180
 
 typedef enum {
     I2C_TOOL_WRITE = 0,
@@ -57,6 +63,31 @@ static bool parse_address(const cJSON *input, uint8_t *address, char *result, si
     }
     if (address_json->valueint < I2C_ADDR_FIRST || address_json->valueint > I2C_ADDR_LAST) {
         snprintf(result, result_len, "Error: address must be %d-%d (7-bit I2C)", I2C_ADDR_FIRST, I2C_ADDR_LAST);
+        return false;
+    }
+    *address = (uint8_t)address_json->valueint;
+    return true;
+}
+
+static bool parse_optional_address(const cJSON *input,
+                                   const char *field_name,
+                                   uint8_t default_address,
+                                   uint8_t *address,
+                                   char *result,
+                                   size_t result_len)
+{
+    cJSON *address_json = cJSON_GetObjectItem(input, field_name);
+
+    if (!address_json) {
+        *address = default_address;
+        return true;
+    }
+    if (!cJSON_IsNumber(address_json)) {
+        snprintf(result, result_len, "Error: %s must be a number", field_name);
+        return false;
+    }
+    if (address_json->valueint < I2C_ADDR_FIRST || address_json->valueint > I2C_ADDR_LAST) {
+        snprintf(result, result_len, "Error: %s must be %d-%d (7-bit I2C)", field_name, I2C_ADDR_FIRST, I2C_ADDR_LAST);
         return false;
     }
     *address = (uint8_t)address_json->valueint;
@@ -329,6 +360,91 @@ static bool execute_i2c_transfer(const cJSON *input,
              (int)read_len,
              (int)write_len,
              hex_buffer);
+    return true;
+}
+
+bool tools_bh1750_read_handler(const cJSON *input, char *result, size_t result_len)
+{
+    uint8_t address = BH1750_DEFAULT_ADDRESS;
+    uint8_t power_on = BH1750_POWER_ON;
+    uint8_t one_time_mode = BH1750_ONE_TIME_H_RES_MODE;
+    uint8_t read_buffer[2] = {0};
+    uint16_t raw_lux = 0;
+    uint32_t lux_tenths = 0;
+    int sda_pin;
+    int scl_pin;
+    int frequency_hz = I2C_DEFAULT_FREQ_HZ;
+    esp_err_t err;
+
+    if (!parse_bus_pins(input, &sda_pin, &scl_pin, result, result_len) ||
+        !parse_optional_address(input, "address", BH1750_DEFAULT_ADDRESS, &address, result, result_len) ||
+        !parse_frequency(input, &frequency_hz, result, result_len)) {
+        return false;
+    }
+    if (address != BH1750_DEFAULT_ADDRESS && address != BH1750_ALT_ADDRESS) {
+        snprintf(result,
+                 result_len,
+                 "Error: BH1750 address must be %d (0x%02X) or %d (0x%02X)",
+                 BH1750_DEFAULT_ADDRESS,
+                 BH1750_DEFAULT_ADDRESS,
+                 BH1750_ALT_ADDRESS,
+                 BH1750_ALT_ADDRESS);
+        return false;
+    }
+    if (!init_i2c_master(sda_pin, scl_pin, frequency_hz, result, result_len)) {
+        return false;
+    }
+
+    err = i2c_master_write_to_device(
+        I2C_TOOL_PORT,
+        address,
+        &power_on,
+        1,
+        pdMS_TO_TICKS(I2C_IO_TIMEOUT_MS)
+    );
+    if (err != ESP_OK) {
+        i2c_driver_delete(I2C_TOOL_PORT);
+        snprintf(result, result_len, "Error: bh1750_read power on failed (%s)", esp_err_to_name(err));
+        return false;
+    }
+
+    err = i2c_master_write_to_device(
+        I2C_TOOL_PORT,
+        address,
+        &one_time_mode,
+        1,
+        pdMS_TO_TICKS(I2C_IO_TIMEOUT_MS)
+    );
+    if (err != ESP_OK) {
+        i2c_driver_delete(I2C_TOOL_PORT);
+        snprintf(result, result_len, "Error: bh1750_read start measurement failed (%s)", esp_err_to_name(err));
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(BH1750_MEASUREMENT_DELAY_MS));
+
+    err = i2c_master_read_from_device(
+        I2C_TOOL_PORT,
+        address,
+        read_buffer,
+        sizeof(read_buffer),
+        pdMS_TO_TICKS(I2C_IO_TIMEOUT_MS)
+    );
+    i2c_driver_delete(I2C_TOOL_PORT);
+    if (err != ESP_OK) {
+        snprintf(result, result_len, "Error: bh1750_read read failed (%s)", esp_err_to_name(err));
+        return false;
+    }
+
+    raw_lux = (uint16_t)(((uint16_t)read_buffer[0] << 8) | read_buffer[1]);
+    lux_tenths = (uint32_t)((raw_lux * 100U + 6U) / 12U);
+
+    snprintf(result,
+             result_len,
+             "BH1750 0x%02X: %lu.%01lu lux",
+             address,
+             (unsigned long)(lux_tenths / 10U),
+             (unsigned long)(lux_tenths % 10U));
     return true;
 }
 

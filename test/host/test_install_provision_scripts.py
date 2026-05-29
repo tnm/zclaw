@@ -21,6 +21,7 @@ TELEGRAM_CLEAR_SH = PROJECT_ROOT / "scripts" / "telegram-clear-backlog.sh"
 ERASE_SH = PROJECT_ROOT / "scripts" / "erase.sh"
 BUILD_SH = PROJECT_ROOT / "scripts" / "build.sh"
 FLASH_SH = PROJECT_ROOT / "scripts" / "flash.sh"
+EMULATE_SH = PROJECT_ROOT / "scripts" / "emulate.sh"
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -35,7 +36,7 @@ class InstallProvisionScriptTests(unittest.TestCase):
         export_dir = home / "esp" / "esp-idf"
         export_dir.mkdir(parents=True, exist_ok=True)
         (export_dir / "export.sh").write_text(
-            "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+            'export IDF_PATH="$HOME/esp/esp-idf"\n',
             encoding="utf-8",
         )
 
@@ -48,7 +49,9 @@ class InstallProvisionScriptTests(unittest.TestCase):
         env["TERM"] = "dumb"
         return env, bin_dir
 
-    def _run_install_with_prefs(self, prefs_text: str, extra_args: list[str]) -> subprocess.CompletedProcess[str]:
+    def _run_install_with_prefs(
+        self, prefs_text: str, extra_args: list[str]
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             home = tmp / "home"
@@ -132,24 +135,21 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "uname",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'Linux'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'Linux'\n",
             )
             _write_executable(
                 bin_dir / "sudo",
-                "#!/bin/sh\n"
-                "\"$@\"\n",
+                '#!/bin/sh\n"$@"\n',
             )
             _write_executable(
                 bin_dir / "apt-get",
-                "#!/bin/sh\n"
-                "exit 127\n",
+                "#!/bin/sh\nexit 127\n",
             )
             _write_executable(
                 bin_dir / "pacman",
                 "#!/bin/sh\n"
-                "printf 'pacman %s\\n' \"$*\" >> \"$PKG_LOG\"\n"
-                "if [ \"$1\" = \"--version\" ]; then\n"
+                'printf \'pacman %s\\n\' "$*" >> "$PKG_LOG"\n'
+                'if [ "$1" = "--version" ]; then\n'
                 "  exit 0\n"
                 "fi\n"
                 "exit 0\n",
@@ -192,7 +192,9 @@ LAST_PORT=
             else:
                 self.assertIn("cJSON library found", output)
 
-    def test_install_linux_unknown_package_manager_skips_optional_auto_install(self) -> None:
+    def test_install_linux_unknown_package_manager_skips_optional_auto_install(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             home = tmp / "home"
@@ -202,14 +204,12 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "uname",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'Linux'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'Linux'\n",
             )
             for pm in ("apt-get", "pacman", "dnf", "zypper"):
                 _write_executable(
                     bin_dir / pm,
-                    "#!/bin/sh\n"
-                    "exit 127\n",
+                    "#!/bin/sh\nexit 127\n",
                 )
 
             env = os.environ.copy()
@@ -260,6 +260,371 @@ LAST_PORT=
         install_text = INSTALL_SH.read_text(encoding="utf-8")
         self.assertIn('ESP_IDF_CHIPS="esp32,esp32c3,esp32c6,esp32s3"', install_text)
 
+    def test_emulate_live_api_auto_seeds_azure_runtime_from_host_env(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "build_dir=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-B" ]; then build_dir="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'mkdir -p "$build_dir/bootloader" "$build_dir/partition_table"\n'
+                'printf "boot" > "$build_dir/bootloader/bootloader.bin"\n'
+                'printf "part" > "$build_dir/partition_table/partition-table.bin"\n'
+                'printf "app" > "$build_dir/zclaw.bin"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "out=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-o" ]; then out="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'printf "merged" > "$out"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "python3",
+                "#!/bin/sh\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+            env.pop("ANTHROPIC_API_KEY", None)
+            env.pop("OPENAI_API_KEY", None)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+            env["AZURE_OPENAI_API_URL"] = (
+                "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            )
+            env["AZURE_OPENAI_MODEL"] = "demo-deployment"
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "auto",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Provider selection: auto", output)
+        self.assertIn("Runtime backend: azure-openai", output)
+        self.assertIn("Runtime model: demo-deployment", output)
+        self.assertIn(
+            "Auto mode: runtime config is seeded from host env, then bridge infers provider from request format.",
+            output,
+        )
+        self.assertIn('llm_backend,data,string,"azure-openai"', captured_csv)
+        self.assertIn('llm_model,data,string,"demo-deployment"', captured_csv)
+        self.assertIn(
+            'llm_api_url,data,string,"https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"',
+            captured_csv,
+        )
+
+    def test_emulate_live_api_explicit_azure_requires_model(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+            env["AZURE_OPENAI_API_URL"] = (
+                "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            )
+            env.pop("AZURE_OPENAI_MODEL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "azure-openai",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: AZURE_OPENAI_MODEL is required for --live-api-provider azure-openai",
+            output,
+        )
+
+    def test_emulate_live_api_auto_requires_azure_model_for_azure_only_env(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env.pop("ANTHROPIC_API_KEY", None)
+            env.pop("OPENAI_API_KEY", None)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+            env["AZURE_OPENAI_API_URL"] = (
+                "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+            )
+            env.pop("AZURE_OPENAI_MODEL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "auto",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: AZURE_OPENAI_MODEL is required for Azure OpenAI in --live-api auto mode",
+            output,
+        )
+
+    def test_emulate_live_api_explicit_anthropic_seeds_runtime_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+            _write_executable(
+                bin_dir / "idf.py",
+                "#!/bin/sh\n"
+                "build_dir=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-B" ]; then build_dir="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'mkdir -p "$build_dir/bootloader" "$build_dir/partition_table"\n'
+                'printf "boot" > "$build_dir/bootloader/bootloader.bin"\n'
+                'printf "part" > "$build_dir/partition_table/partition-table.bin"\n'
+                'printf "app" > "$build_dir/zclaw.bin"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "esptool.py",
+                "#!/bin/sh\n"
+                "out=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  if [ "$1" = "-o" ]; then out="$2"; shift 2; continue; fi\n'
+                "  shift\n"
+                "done\n"
+                'printf "merged" > "$out"\n'
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "python3",
+                "#!/bin/sh\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+            env["ANTHROPIC_API_KEY"] = "anthropic-sk-test-xyz"
+            env.pop("ANTHROPIC_MODEL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "anthropic",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Provider selection: anthropic", output)
+        self.assertIn("Runtime backend: anthropic", output)
+        self.assertIn("Runtime model: claude-sonnet-4-6", output)
+        self.assertIn('llm_backend,data,string,"anthropic"', captured_csv)
+        self.assertIn('llm_model,data,string,"claude-sonnet-4-6"', captured_csv)
+
+    def test_emulate_live_api_auto_rejects_missing_provider_creds(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "qemu-system-riscv32",
+                "#!/bin/sh\nexit 0\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["ZCLAW_QEMU_BUILD_DIR"] = str(tmp / "build-qemu")
+            env["ZCLAW_QEMU_SDKCONFIG"] = str(tmp / "sdkconfig.qemu")
+            env.pop("ANTHROPIC_API_KEY", None)
+            env.pop("OPENAI_API_KEY", None)
+            env.pop("AZURE_OPENAI_API_KEY", None)
+            env.pop("AZURE_OPENAI_API_URL", None)
+
+            proc = subprocess.run(
+                [
+                    str(EMULATE_SH),
+                    "--live-api",
+                    "--live-api-provider",
+                    "auto",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: set OPENAI_API_KEY, ANTHROPIC_API_KEY, or AZURE_OPENAI_API_KEY + AZURE_OPENAI_API_URL + AZURE_OPENAI_MODEL for --live-api mode",
+            output,
+        )
+
     def test_kconfig_defaults_uart_when_usb_serial_jtag_is_unsupported(self) -> None:
         kconfig_text = KCONFIG_PROJBUILD.read_text(encoding="utf-8")
         self.assertIn("config ZCLAW_CHANNEL_UART", kconfig_text)
@@ -274,8 +639,7 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "idf.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$IDF_ARGS_FILE"\n',
             )
 
             proc = subprocess.run(
@@ -291,7 +655,10 @@ LAST_PORT=
             self.assertEqual(proc.returncode, 0, msg=output)
             args_text = args_file.read_text(encoding="utf-8")
             self.assertIn("IDF_TARGET=esp32s3", args_text)
-            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults", args_text)
+            self.assertIn(
+                "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults",
+                args_text,
+            )
             self.assertIn("build", args_text)
 
     def test_build_t_relay_passes_expected_idf_overrides(self) -> None:
@@ -303,8 +670,7 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "idf.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$IDF_ARGS_FILE"\n',
             )
 
             proc = subprocess.run(
@@ -320,7 +686,10 @@ LAST_PORT=
             self.assertEqual(proc.returncode, 0, msg=output)
             args_text = args_file.read_text(encoding="utf-8")
             self.assertIn("IDF_TARGET=esp32", args_text)
-            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32-t-relay.defaults", args_text)
+            self.assertIn(
+                "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32-t-relay.defaults",
+                args_text,
+            )
             self.assertIn("build", args_text)
 
     def test_flash_box3_passes_expected_idf_overrides(self) -> None:
@@ -334,13 +703,11 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "idf.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$IDF_ARGS_FILE"\n',
             )
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
             _write_executable(
                 bin_dir / "esptool.py",
@@ -352,8 +719,7 @@ LAST_PORT=
             )
             _write_executable(
                 bin_dir / "espefuse.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
             )
 
             proc = subprocess.run(
@@ -369,7 +735,10 @@ LAST_PORT=
             self.assertEqual(proc.returncode, 0, msg=output)
             args_text = args_file.read_text(encoding="utf-8")
             self.assertIn("IDF_TARGET=esp32s3", args_text)
-            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults", args_text)
+            self.assertIn(
+                "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32s3-box-3.defaults",
+                args_text,
+            )
             self.assertIn("-p", args_text)
             self.assertIn(str(fake_port), args_text)
             self.assertIn("flash", args_text)
@@ -385,13 +754,11 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "idf.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$IDF_ARGS_FILE"\n',
             )
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
             _write_executable(
                 bin_dir / "esptool.py",
@@ -403,8 +770,7 @@ LAST_PORT=
             )
             _write_executable(
                 bin_dir / "espefuse.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
             )
 
             proc = subprocess.run(
@@ -420,7 +786,10 @@ LAST_PORT=
             self.assertEqual(proc.returncode, 0, msg=output)
             args_text = args_file.read_text(encoding="utf-8")
             self.assertIn("IDF_TARGET=esp32", args_text)
-            self.assertIn("SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32-t-relay.defaults", args_text)
+            self.assertIn(
+                "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.esp32-t-relay.defaults",
+                args_text,
+            )
             self.assertIn("-p", args_text)
             self.assertIn(str(fake_port), args_text)
             self.assertIn("flash", args_text)
@@ -435,7 +804,14 @@ LAST_PORT=
             env["IDF_ARGS_FILE"] = str(args_file)
 
             esptool_script = (
-                tmp / "home" / "esp" / "esp-idf" / "components" / "esptool_py" / "esptool" / "esptool.py"
+                tmp
+                / "home"
+                / "esp"
+                / "esp-idf"
+                / "components"
+                / "esptool_py"
+                / "esptool"
+                / "esptool.py"
             )
             esptool_script.parent.mkdir(parents=True, exist_ok=True)
             esptool_script.write_text(
@@ -449,18 +825,15 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "idf.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$IDF_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$IDF_ARGS_FILE"\n',
             )
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
             _write_executable(
                 bin_dir / "espefuse.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'FLASH_CRYPT_CNT = 0'\n",
             )
 
             proc = subprocess.run(
@@ -487,13 +860,11 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
             _write_executable(
                 bin_dir / "esptool.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'Chip is ESP32-C3 (QFN32)'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'Chip is ESP32-C3 (QFN32)'\n",
             )
 
             proc = subprocess.run(
@@ -519,13 +890,11 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
             _write_executable(
                 bin_dir / "esptool.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' 'Chip is ESP32-S3 (QFN56)'\n",
+                "#!/bin/sh\nprintf '%s\\n' 'Chip is ESP32-S3 (QFN56)'\n",
             )
 
             proc = subprocess.run(
@@ -542,7 +911,9 @@ LAST_PORT=
             self.assertIn("requires target 'esp32'", output)
             self.assertIn("ESP32-S3", output)
 
-    def _run_provision_detect(self, env_ssid: str, nmcli_output: str) -> subprocess.CompletedProcess[str]:
+    def _run_provision_detect(
+        self, env_ssid: str, nmcli_output: str
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             bin_dir = tmp / "bin"
@@ -550,13 +921,11 @@ LAST_PORT=
 
             _write_executable(
                 bin_dir / "uname",
-                "#!/bin/sh\n"
-                "echo Linux\n",
+                "#!/bin/sh\necho Linux\n",
             )
             _write_executable(
                 bin_dir / "nmcli",
-                "#!/bin/sh\n"
-                f"printf '%s\\n' '{nmcli_output}'\n",
+                f"#!/bin/sh\nprintf '%s\\n' '{nmcli_output}'\n",
             )
 
             env = os.environ.copy()
@@ -585,7 +954,12 @@ LAST_PORT=
         self.assertEqual(proc.returncode, 0, msg=output)
         self.assertEqual(proc.stdout.strip(), ":smiley:")
 
-    def _run_provision_api_check_fail(self, backend: str) -> subprocess.CompletedProcess[str]:
+    def _run_provision_api_check_fail(
+        self,
+        backend: str,
+        api_url: str | None = None,
+        model: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             bin_dir = tmp / "bin"
@@ -595,7 +969,7 @@ LAST_PORT=
             export_dir = home / "esp" / "esp-idf"
             export_dir.mkdir(parents=True, exist_ok=True)
             (export_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -604,11 +978,11 @@ LAST_PORT=
                 "#!/bin/sh\n"
                 "out=''\n"
                 "while [ $# -gt 0 ]; do\n"
-                "  if [ \"$1\" = \"-o\" ]; then out=\"$2\"; shift 2; continue; fi\n"
+                '  if [ "$1" = "-o" ]; then out="$2"; shift 2; continue; fi\n'
                 "  shift\n"
                 "done\n"
-                "if [ -n \"$out\" ]; then\n"
-                "  printf '%s' '{\"error\":{\"message\":\"invalid api key\"}}' > \"$out\"\n"
+                'if [ -n "$out" ]; then\n'
+                '  printf \'%s\' \'{"error":{"message":"invalid api key"}}\' > "$out"\n'
                 "fi\n"
                 "printf '%s' '401'\n",
             )
@@ -618,21 +992,27 @@ LAST_PORT=
             env["PATH"] = f"{bin_dir}:/usr/bin:/bin"
             env["TERM"] = "dumb"
 
+            cmd = [
+                str(PROVISION_SH),
+                "--yes",
+                "--port",
+                "/dev/null",
+                "--ssid",
+                "TestNet",
+                "--pass",
+                "password123",
+                "--backend",
+                backend,
+                "--api-key",
+                "sk-test",
+            ]
+            if model is not None:
+                cmd.extend(["--model", model])
+            if api_url is not None:
+                cmd.extend(["--api-url", api_url])
+
             return subprocess.run(
-                [
-                    str(PROVISION_SH),
-                    "--yes",
-                    "--port",
-                    "/dev/null",
-                    "--ssid",
-                    "TestNet",
-                    "--pass",
-                    "password123",
-                    "--backend",
-                    backend,
-                    "--api-key",
-                    "sk-test",
-                ],
+                cmd,
                 cwd=PROJECT_ROOT,
                 env=env,
                 text=True,
@@ -645,6 +1025,7 @@ LAST_PORT=
         *,
         backend: str,
         api_url: str,
+        model: str | None = None,
     ) -> tuple[subprocess.CompletedProcess[str], str]:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -656,7 +1037,7 @@ LAST_PORT=
             export_dir = home / "esp" / "esp-idf"
             export_dir.mkdir(parents=True, exist_ok=True)
             (export_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -666,9 +1047,9 @@ LAST_PORT=
                 "out=''\n"
                 "url=''\n"
                 "while [ $# -gt 0 ]; do\n"
-                "  case \"$1\" in\n"
+                '  case "$1" in\n'
                 "    -o)\n"
-                "      out=\"$2\"\n"
+                '      out="$2"\n'
                 "      shift 2\n"
                 "      ;;\n"
                 "    -w|-H|-d|--connect-timeout|--max-time)\n"
@@ -678,14 +1059,14 @@ LAST_PORT=
                 "      shift\n"
                 "      ;;\n"
                 "    *)\n"
-                "      url=\"$1\"\n"
+                '      url="$1"\n'
                 "      shift\n"
                 "      ;;\n"
                 "  esac\n"
                 "done\n"
-                "printf '%s' \"$url\" > \"$CURL_URL_FILE\"\n"
-                "if [ -n \"$out\" ]; then\n"
-                "  printf '%s' '{\"error\":{\"message\":\"invalid api key\"}}' > \"$out\"\n"
+                'printf \'%s\' "$url" > "$CURL_URL_FILE"\n'
+                'if [ -n "$out" ]; then\n'
+                '  printf \'%s\' \'{"error":{"message":"invalid api key"}}\' > "$out"\n'
                 "fi\n"
                 "printf '%s' '401'\n",
             )
@@ -708,6 +1089,7 @@ LAST_PORT=
                     "password123",
                     "--backend",
                     backend,
+                    *(["--model", model] if model is not None else []),
                     "--api-key",
                     "sk-test",
                     "--api-url",
@@ -720,7 +1102,11 @@ LAST_PORT=
                 check=False,
             )
 
-            called_url = curl_url_file.read_text(encoding="utf-8") if curl_url_file.exists() else ""
+            called_url = (
+                curl_url_file.read_text(encoding="utf-8")
+                if curl_url_file.exists()
+                else ""
+            )
             return proc, called_url
 
     def _run_provision_ollama_missing_api_url(self) -> subprocess.CompletedProcess[str]:
@@ -730,7 +1116,7 @@ LAST_PORT=
             export_dir = home / "esp" / "esp-idf"
             export_dir.mkdir(parents=True, exist_ok=True)
             (export_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -773,7 +1159,7 @@ LAST_PORT=
             export_dir = home / "esp" / "esp-idf"
             export_dir.mkdir(parents=True, exist_ok=True)
             (export_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -822,14 +1208,20 @@ LAST_PORT=
             tmp = Path(td)
             home = tmp / "home"
             idf_dir = home / "esp" / "esp-idf"
-            nvs_gen = idf_dir / "components" / "nvs_flash" / "nvs_partition_generator" / "nvs_partition_gen.py"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
             parttool = idf_dir / "components" / "partition_table" / "parttool.py"
             nvs_gen.parent.mkdir(parents=True, exist_ok=True)
             parttool.parent.mkdir(parents=True, exist_ok=True)
             nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
             parttool.write_text("# parttool stub path\n", encoding="utf-8")
             (idf_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -838,9 +1230,9 @@ LAST_PORT=
             _write_executable(
                 bin_dir / "python",
                 "#!/bin/sh\n"
-                "if [ \"$2\" = \"generate\" ]; then\n"
-                "  cp \"$3\" \"$CSV_CAPTURE\"\n"
-                "  : > \"$4\"\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
                 "  exit 0\n"
                 "fi\n"
                 "exit 0\n",
@@ -881,7 +1273,11 @@ LAST_PORT=
                 check=False,
             )
 
-            captured_csv = (tmp / "captured-nvs.csv").read_text(encoding="utf-8") if (tmp / "captured-nvs.csv").exists() else ""
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
             return proc, captured_csv
 
     def test_provision_openai_api_check_runs_in_yes_mode(self) -> None:
@@ -898,7 +1294,20 @@ LAST_PORT=
         self.assertIn("Verifying OpenRouter API key", output)
         self.assertIn("Error: API check failed in --yes mode.", output)
 
-    def test_provision_openai_api_check_uses_models_endpoint_for_chat_override(self) -> None:
+    def test_provision_azure_openai_api_check_runs_in_yes_mode(self) -> None:
+        proc = self._run_provision_api_check_fail(
+            "azure-openai",
+            api_url="https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+            model="gepete-5",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Verifying Azure OpenAI API key", output)
+        self.assertIn("Error: API check failed in --yes mode.", output)
+
+    def test_provision_openai_api_check_uses_models_endpoint_for_chat_override(
+        self,
+    ) -> None:
         proc, called_url = self._run_provision_api_check_capture_url(
             backend="openai",
             api_url="https://api.openai.com/v1/chat/completions",
@@ -908,7 +1317,9 @@ LAST_PORT=
         self.assertIn("Verifying OpenAI API key", output)
         self.assertEqual(called_url, "https://api.openai.com/v1/models")
 
-    def test_provision_openrouter_api_check_uses_models_endpoint_for_chat_override(self) -> None:
+    def test_provision_openrouter_api_check_uses_models_endpoint_for_chat_override(
+        self,
+    ) -> None:
         proc, called_url = self._run_provision_api_check_capture_url(
             backend="openrouter",
             api_url="https://openrouter.ai/api/v1/chat/completions",
@@ -918,11 +1329,89 @@ LAST_PORT=
         self.assertIn("Verifying OpenRouter API key", output)
         self.assertEqual(called_url, "https://openrouter.ai/api/v1/models")
 
+    def test_provision_azure_openai_api_check_uses_exact_chat_url(self) -> None:
+        api_url = "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"
+        proc, called_url = self._run_provision_api_check_capture_url(
+            backend="azure-openai",
+            api_url=api_url,
+            model="gepete-5",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Verifying Azure OpenAI API key", output)
+        self.assertEqual(called_url, api_url)
+
     def test_provision_ollama_requires_api_url_in_yes_mode(self) -> None:
         proc = self._run_provision_ollama_missing_api_url()
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertNotEqual(proc.returncode, 0, msg=output)
-        self.assertIn("Error: --api-url is required with --backend ollama in --yes mode", output)
+        self.assertIn(
+            "Error: --api-url is required with --backend ollama in --yes mode", output
+        )
+
+    def test_provision_azure_openai_requires_api_url_in_yes_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            export_dir = home / "esp" / "esp-idf"
+            export_dir.mkdir(parents=True, exist_ok=True)
+            (export_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--yes",
+                    "--skip-api-check",
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    "TestNet",
+                    "--pass",
+                    "password123",
+                    "--backend",
+                    "azure-openai",
+                    "--model",
+                    "gepete-5",
+                    "--api-key",
+                    "sk-test",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: --api-url is required with --backend azure-openai in --yes mode",
+            output,
+        )
+
+    def test_provision_azure_openai_requires_model_in_yes_mode(
+        self,
+    ) -> None:
+        proc, _captured_csv = self._run_provision_capture_csv(
+            backend="azure-openai",
+            assume_yes=True,
+            api_key="sk-test",
+            api_url="https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn(
+            "Error: --model is required with --backend azure-openai in --yes mode",
+            output,
+        )
 
     def test_provision_rejects_ssid_longer_than_32_chars(self) -> None:
         proc = self._run_provision_length_validation(
@@ -979,7 +1468,9 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Use 1-4 non-zero integers", output)
 
-    def test_provision_interactive_openai_model_menu_accepts_curated_choice(self) -> None:
+    def test_provision_interactive_openai_model_menu_accepts_curated_choice(
+        self,
+    ) -> None:
         proc, captured_csv = self._run_provision_capture_csv(
             backend="openai",
             assume_yes=False,
@@ -991,7 +1482,9 @@ LAST_PORT=
         self.assertIn("Select model for openai:", output)
         self.assertIn('llm_model,data,string,"gpt-4.1-mini"', captured_csv)
 
-    def test_provision_interactive_openai_model_menu_defaults_to_first_choice(self) -> None:
+    def test_provision_interactive_openai_model_menu_defaults_to_first_choice(
+        self,
+    ) -> None:
         proc, captured_csv = self._run_provision_capture_csv(
             backend="openai",
             assume_yes=False,
@@ -1015,6 +1508,146 @@ LAST_PORT=
         self.assertIn("Select model for openai:", output)
         self.assertIn('llm_model,data,string,"custom-model-123"', captured_csv)
 
+    def test_provision_interactive_azure_openai_model_prompt_accepts_custom_deployment(
+        self,
+    ) -> None:
+        proc, captured_csv = self._run_provision_capture_csv(
+            backend="azure-openai",
+            assume_yes=False,
+            input_text="gepete-5\nhttps://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview\ny\n\n\n",
+            api_key="sk-test",
+        )
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn('llm_backend,data,string,"azure-openai"', captured_csv)
+        self.assertIn('llm_model,data,string,"gepete-5"', captured_csv)
+        self.assertIn(
+            'llm_api_url,data,string,"https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview"',
+            captured_csv,
+        )
+
+    def test_provision_interactive_azure_openai_retry_can_fix_deployment_name(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home = tmp / "home"
+            idf_dir = home / "esp" / "esp-idf"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
+            parttool = idf_dir / "components" / "partition_table" / "parttool.py"
+            nvs_gen.parent.mkdir(parents=True, exist_ok=True)
+            parttool.parent.mkdir(parents=True, exist_ok=True)
+            nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
+            parttool.write_text("# parttool stub path\n", encoding="utf-8")
+            (idf_dir / "export.sh").write_text(
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
+                encoding="utf-8",
+            )
+
+            bin_dir = tmp / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            _write_executable(
+                bin_dir / "python",
+                "#!/bin/sh\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
+                "  exit 0\n"
+                "fi\n"
+                "exit 0\n",
+            )
+            _write_executable(
+                bin_dir / "curl",
+                "#!/bin/sh\n"
+                "out=''\n"
+                "body=''\n"
+                "while [ $# -gt 0 ]; do\n"
+                '  case "$1" in\n'
+                '    -o) out="$2"; shift 2 ;;\n'
+                '    -d) body="$2"; shift 2 ;;\n'
+                "    -w|-H|--connect-timeout|--max-time) shift 2 ;;\n"
+                "    -s|-S|-sS) shift ;;\n"
+                "    *) shift ;;\n"
+                "  esac\n"
+                "done\n"
+                'model="unknown"\n'
+                'case "$body" in\n'
+                '  *bad-deployment*) model="bad-deployment" ;;\n'
+                '  *good-deployment*) model="good-deployment" ;;\n'
+                "esac\n"
+                'printf "%s\\n" "$model" >> "$CURL_MODELS_FILE"\n'
+                'if [ "$model" = "good-deployment" ]; then\n'
+                '  if [ -n "$out" ]; then printf "%s" "{}" > "$out"; fi\n'
+                '  printf "%s" "200"\n'
+                "else\n"
+                '  if [ -n "$out" ]; then printf \'%s\' \'{"error":{"message":"deployment not found"}}\' > "$out"; fi\n'
+                '  printf "%s" "401"\n'
+                "fi\n",
+            )
+
+            env = os.environ.copy()
+            env["HOME"] = str(home)
+            env["PATH"] = f"{bin_dir}:/usr/bin:/bin:/usr/sbin:/sbin"
+            env["TERM"] = "dumb"
+            env["CSV_CAPTURE"] = str(tmp / "captured-nvs.csv")
+            env["CURL_MODELS_FILE"] = str(tmp / "curl-models.txt")
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_SH),
+                    "--port",
+                    "/dev/null",
+                    "--ssid",
+                    "HomeNetwork",
+                    "--pass",
+                    "password123",
+                    "--backend",
+                    "azure-openai",
+                    "--api-key",
+                    "sk-test",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                input=(
+                    "bad-deployment\n"
+                    "https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview\n"
+                    "y\n"
+                    "good-deployment\n"
+                    "\n"
+                    "\n"
+                    "y\n"
+                    "\n"
+                    "\n"
+                ),
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            captured_csv = (
+                (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
+                if (tmp / "captured-nvs.csv").exists()
+                else ""
+            )
+            curl_models = (
+                (tmp / "curl-models.txt").read_text(encoding="utf-8")
+                if (tmp / "curl-models.txt").exists()
+                else ""
+            )
+
+        self.assertEqual(proc.returncode, 0, msg=output)
+        self.assertIn("deployment not found", output)
+        self.assertIn("bad-deployment\n", curl_models)
+        self.assertIn("good-deployment\n", curl_models)
+        self.assertIn('llm_model,data,string,"good-deployment"', captured_csv)
+
     def test_provision_interactive_ollama_model_menu_defaults_to_qwen(self) -> None:
         proc, captured_csv = self._run_provision_capture_csv(
             backend="ollama",
@@ -1027,21 +1660,30 @@ LAST_PORT=
         self.assertIn("Select model for ollama:", output)
         self.assertIn('llm_backend,data,string,"ollama"', captured_csv)
         self.assertIn('llm_model,data,string,"qwen3:8b"', captured_csv)
-        self.assertIn('llm_api_url,data,string,"http://127.0.0.1:11434/v1/chat/completions"', captured_csv)
+        self.assertIn(
+            'llm_api_url,data,string,"http://127.0.0.1:11434/v1/chat/completions"',
+            captured_csv,
+        )
 
     def test_provision_writes_chat_id_allowlist_and_legacy_primary_key(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             home = tmp / "home"
             idf_dir = home / "esp" / "esp-idf"
-            nvs_gen = idf_dir / "components" / "nvs_flash" / "nvs_partition_generator" / "nvs_partition_gen.py"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
             parttool = idf_dir / "components" / "partition_table" / "parttool.py"
             nvs_gen.parent.mkdir(parents=True, exist_ok=True)
             parttool.parent.mkdir(parents=True, exist_ok=True)
             nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
             parttool.write_text("# parttool stub path\n", encoding="utf-8")
             (idf_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -1050,9 +1692,9 @@ LAST_PORT=
             _write_executable(
                 bin_dir / "python",
                 "#!/bin/sh\n"
-                "if [ \"$2\" = \"generate\" ]; then\n"
-                "  cp \"$3\" \"$CSV_CAPTURE\"\n"
-                "  : > \"$4\"\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
                 "  exit 0\n"
                 "fi\n"
                 "exit 0\n",
@@ -1097,21 +1739,29 @@ LAST_PORT=
             captured_csv = (tmp / "captured-nvs.csv").read_text(encoding="utf-8")
             self.assertIn('llm_model,data,string,"gpt-5.4"', captured_csv)
             self.assertIn('tg_chat_id,data,string,"7585013353"', captured_csv)
-            self.assertIn('tg_chat_ids,data,string,"7585013353,-100222333444"', captured_csv)
+            self.assertIn(
+                'tg_chat_ids,data,string,"7585013353,-100222333444"', captured_csv
+            )
 
     def test_provision_ollama_writes_normalized_api_url_without_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             home = tmp / "home"
             idf_dir = home / "esp" / "esp-idf"
-            nvs_gen = idf_dir / "components" / "nvs_flash" / "nvs_partition_generator" / "nvs_partition_gen.py"
+            nvs_gen = (
+                idf_dir
+                / "components"
+                / "nvs_flash"
+                / "nvs_partition_generator"
+                / "nvs_partition_gen.py"
+            )
             parttool = idf_dir / "components" / "partition_table" / "parttool.py"
             nvs_gen.parent.mkdir(parents=True, exist_ok=True)
             parttool.parent.mkdir(parents=True, exist_ok=True)
             nvs_gen.write_text("# nvs generator stub path\n", encoding="utf-8")
             parttool.write_text("# parttool stub path\n", encoding="utf-8")
             (idf_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -1120,9 +1770,9 @@ LAST_PORT=
             _write_executable(
                 bin_dir / "python",
                 "#!/bin/sh\n"
-                "if [ \"$2\" = \"generate\" ]; then\n"
-                "  cp \"$3\" \"$CSV_CAPTURE\"\n"
-                "  : > \"$4\"\n"
+                'if [ "$2" = "generate" ]; then\n'
+                '  cp "$3" "$CSV_CAPTURE"\n'
+                '  : > "$4"\n'
                 "  exit 0\n"
                 "fi\n"
                 "exit 0\n",
@@ -1195,7 +1845,7 @@ LAST_PORT=
             export_dir = home / "esp" / "esp-idf"
             export_dir.mkdir(parents=True, exist_ok=True)
             (export_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -1203,8 +1853,7 @@ LAST_PORT=
             bin_dir.mkdir(parents=True, exist_ok=True)
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
 
             env = os.environ.copy()
@@ -1228,7 +1877,9 @@ LAST_PORT=
 
         output = f"{proc.stdout}\n{proc.stderr}"
         self.assertNotEqual(proc.returncode, 0, msg=output)
-        self.assertIn("interactive confirmation required in non-interactive mode", output)
+        self.assertIn(
+            "interactive confirmation required in non-interactive mode", output
+        )
 
     def test_erase_nvs_yes_executes_parttool_erase_partition(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -1242,7 +1893,7 @@ LAST_PORT=
             parttool.parent.mkdir(parents=True, exist_ok=True)
             parttool.write_text("# parttool stub path\n", encoding="utf-8")
             (idf_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -1250,13 +1901,11 @@ LAST_PORT=
             bin_dir.mkdir(parents=True, exist_ok=True)
             _write_executable(
                 bin_dir / "python3",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$ERASE_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ERASE_ARGS_FILE"\n',
             )
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
 
             env = os.environ.copy()
@@ -1298,7 +1947,7 @@ LAST_PORT=
             export_dir = home / "esp" / "esp-idf"
             export_dir.mkdir(parents=True, exist_ok=True)
             (export_dir / "export.sh").write_text(
-                "export IDF_PATH=\"$HOME/esp/esp-idf\"\n",
+                'export IDF_PATH="$HOME/esp/esp-idf"\n',
                 encoding="utf-8",
             )
 
@@ -1306,13 +1955,11 @@ LAST_PORT=
             bin_dir.mkdir(parents=True, exist_ok=True)
             _write_executable(
                 bin_dir / "idf.py",
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$ERASE_ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ERASE_ARGS_FILE"\n',
             )
             _write_executable(
                 bin_dir / "lsof",
-                "#!/bin/sh\n"
-                "exit 1\n",
+                "#!/bin/sh\nexit 1\n",
             )
 
             env = os.environ.copy()
@@ -1365,9 +2012,11 @@ LAST_PORT=
             self.assertTrue(env_file.exists(), msg=output)
             content = env_file.read_text(encoding="utf-8")
             self.assertIn("ZCLAW_WIFI_SSID", content)
-            self.assertIn("ZCLAW_MODEL=gpt-5.4", content)
+            self.assertIn("ZCLAW_MODEL=", content)
+            self.assertNotIn("ZCLAW_MODEL=gpt-5.4", content)
             self.assertIn("ZCLAW_API_KEY", content)
             self.assertIn("ZCLAW_API_URL", content)
+            self.assertIn("AZURE_OPENAI_API_KEY", content)
 
     def test_provision_dev_forwards_profile_values(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -1378,8 +2027,7 @@ LAST_PORT=
 
             _write_executable(
                 stub,
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
             )
             env_file.write_text(
                 "\n".join(
@@ -1440,8 +2088,7 @@ LAST_PORT=
 
             _write_executable(
                 stub,
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
             )
             env_file.write_text(
                 "\n".join(
@@ -1480,6 +2127,146 @@ LAST_PORT=
             self.assertIn("--api-key", args_text)
             self.assertIn("or-sk-test-xyz", args_text)
 
+    def test_provision_dev_uses_azure_provider_specific_env_key(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            args_file = tmp / "args.txt"
+            stub = tmp / "mock-provision.sh"
+
+            _write_executable(
+                stub,
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
+            )
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=azure-openai",
+                        "ZCLAW_MODEL=gepete-5",
+                        "ZCLAW_API_URL=https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["ARGS_FILE"] = str(args_file)
+            env["ZCLAW_PROVISION_SCRIPT"] = str(stub)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            args_text = args_file.read_text(encoding="utf-8")
+            self.assertIn("--backend", args_text)
+            self.assertIn("azure-openai", args_text)
+            self.assertIn("--model", args_text)
+            self.assertIn("gepete-5", args_text)
+            self.assertIn("--api-key", args_text)
+            self.assertIn("azure-sk-test-xyz", args_text)
+
+    def test_provision_dev_azure_openai_requires_model(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=azure-openai",
+                        "ZCLAW_API_URL=https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertNotEqual(proc.returncode, 0, msg=output)
+            self.assertIn(
+                "Error: model/deployment name not set for Azure OpenAI backend.",
+                output,
+            )
+
+    def test_provision_dev_azure_show_config_with_model(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            args_file = tmp / "args.txt"
+            stub = tmp / "mock-provision.sh"
+
+            _write_executable(
+                stub,
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
+            )
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=azure-openai",
+                        "ZCLAW_MODEL=gepete-5",
+                        "ZCLAW_API_URL=https://demo.openai.azure.com/openai/responses?api-version=2025-04-01-preview",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env["ARGS_FILE"] = str(args_file)
+            env["ZCLAW_PROVISION_SCRIPT"] = str(stub)
+            env["AZURE_OPENAI_API_KEY"] = "azure-sk-test-xyz"
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                    "--show-config",
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            output = f"{proc.stdout}\n{proc.stderr}"
+            self.assertEqual(proc.returncode, 0, msg=output)
+            self.assertIn("Model: gepete-5", output)
+
     def test_provision_dev_forwards_multi_telegram_chat_ids(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -1489,8 +2276,7 @@ LAST_PORT=
 
             _write_executable(
                 stub,
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
             )
             env_file.write_text(
                 "\n".join(
@@ -1603,6 +2389,41 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Error: API URL not set for Ollama backend.", output)
 
+    def test_provision_dev_azure_openai_requires_api_url(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            env_file = tmp / "dev.env"
+            env_file.write_text(
+                "\n".join(
+                    [
+                        "ZCLAW_WIFI_SSID=Trident",
+                        "ZCLAW_BACKEND=azure-openai",
+                        "AZURE_OPENAI_API_KEY=azure-sk-test-xyz",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+
+            proc = subprocess.run(
+                [
+                    str(PROVISION_DEV_SH),
+                    "--env-file",
+                    str(env_file),
+                ],
+                cwd=PROJECT_ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        output = f"{proc.stdout}\n{proc.stderr}"
+        self.assertNotEqual(proc.returncode, 0, msg=output)
+        self.assertIn("Error: API URL not set for Azure OpenAI backend.", output)
+
     def test_provision_dev_ollama_forwards_api_url_without_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
@@ -1612,8 +2433,7 @@ LAST_PORT=
 
             _write_executable(
                 stub,
-                "#!/bin/sh\n"
-                "printf '%s\\n' \"$@\" > \"$ARGS_FILE\"\n",
+                '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$ARGS_FILE"\n',
             )
             env_file.write_text(
                 "\n".join(
@@ -1654,7 +2474,9 @@ LAST_PORT=
             self.assertIn("--api-url", args_text)
             self.assertIn("http://192.168.1.10:11434/v1/chat/completions", args_text)
             self.assertNotIn("--api-key", args_text)
-            self.assertIn("API URL: http://192.168.1.10:11434/v1/chat/completions", output)
+            self.assertIn(
+                "API URL: http://192.168.1.10:11434/v1/chat/completions", output
+            )
 
     def test_telegram_clear_backlog_errors_without_token(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -1682,7 +2504,9 @@ LAST_PORT=
         self.assertNotEqual(proc.returncode, 0, msg=output)
         self.assertIn("Error: Telegram token not set.", output)
 
-    def test_telegram_clear_backlog_uses_profile_token_and_advances_offset(self) -> None:
+    def test_telegram_clear_backlog_uses_profile_token_and_advances_offset(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             env_file = tmp / "dev.env"
@@ -1700,28 +2524,28 @@ LAST_PORT=
                 "fmt=''\n"
                 "url=''\n"
                 "while [ $# -gt 0 ]; do\n"
-                "  case \"$1\" in\n"
-                "    -o) out=\"$2\"; shift 2 ;;\n"
-                "    -w) fmt=\"$2\"; shift 2 ;;\n"
+                '  case "$1" in\n'
+                '    -o) out="$2"; shift 2 ;;\n'
+                '    -w) fmt="$2"; shift 2 ;;\n'
                 "    --connect-timeout|--max-time) shift 2 ;;\n"
                 "    -s|-S|-sS) shift ;;\n"
-                "    *) url=\"$1\"; shift ;;\n"
+                '    *) url="$1"; shift ;;\n'
                 "  esac\n"
                 "done\n"
-                "printf '%s\\n' \"$url\" >> \"$CURL_URLS_FILE\"\n"
+                'printf \'%s\\n\' "$url" >> "$CURL_URLS_FILE"\n'
                 "code='200'\n"
                 "if echo \"$url\" | grep -q 'offset=-1'; then\n"
-                "  body='{\"ok\":true,\"result\":[{\"update_id\":4242}]}'\n"
+                '  body=\'{"ok":true,"result":[{"update_id":4242}]}\'\n'
                 "elif echo \"$url\" | grep -q 'offset=4243'; then\n"
-                "  body='{\"ok\":true,\"result\":[]}'\n"
+                '  body=\'{"ok":true,"result":[]}\'\n'
                 "else\n"
                 "  code='400'\n"
-                "  body='{\"ok\":false,\"error_code\":400,\"description\":\"bad offset\"}'\n"
+                '  body=\'{"ok":false,"error_code":400,"description":"bad offset"}\'\n'
                 "fi\n"
-                "if [ -n \"$out\" ]; then\n"
-                "  printf '%s' \"$body\" > \"$out\"\n"
+                'if [ -n "$out" ]; then\n'
+                '  printf \'%s\' "$body" > "$out"\n'
                 "fi\n"
-                "if [ -n \"$fmt\" ]; then\n"
+                'if [ -n "$fmt" ]; then\n'
                 "  printf '%s' \"$code\"\n"
                 "else\n"
                 "  printf '%s' \"$body\"\n"

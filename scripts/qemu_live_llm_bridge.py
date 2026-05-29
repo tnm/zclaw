@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run QEMU and proxy emulator LLM requests to Anthropic or OpenAI from host."""
+"""Run QEMU and proxy emulator LLM requests to Anthropic, OpenAI, or Azure OpenAI from host."""
 
 from __future__ import annotations
 
@@ -25,7 +25,9 @@ RESP_PREFIX_B = RESP_PREFIX.encode("utf-8")
 
 
 def build_error_payload(message: str) -> str:
-    return json.dumps({"error": {"message": f"Host bridge error: {message}"}}, separators=(",", ":"))
+    return json.dumps(
+        {"error": {"message": f"Host bridge error: {message}"}}, separators=(",", ":")
+    )
 
 
 def write_host_line(stream, message: str) -> None:
@@ -99,6 +101,38 @@ def call_openai(request_json: str, timeout_s: int) -> str:
         return build_error_payload(str(exc))
 
 
+def call_azure_openai(request_json: str, timeout_s: int) -> str:
+    api_key = os.environ.get("AZURE_OPENAI_API_KEY", "")
+    if not api_key:
+        return build_error_payload("AZURE_OPENAI_API_KEY is not set")
+
+    api_url = os.environ.get("AZURE_OPENAI_API_URL", "")
+    if not api_url:
+        return build_error_payload("AZURE_OPENAI_API_URL is not set")
+
+    req = urllib.request.Request(
+        api_url,
+        data=request_json.encode("utf-8"),
+        headers={
+            "api-key": api_key,
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return compact_json_or_error(body)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        if body:
+            return compact_json_or_error(body)
+        return build_error_payload(f"HTTP {exc.code}")
+    except Exception as exc:  # pragma: no cover - network/runtime dependent
+        return build_error_payload(str(exc))
+
+
 def detect_provider_from_request(request_json: str) -> str:
     try:
         payload = json.loads(request_json)
@@ -107,6 +141,10 @@ def detect_provider_from_request(request_json: str) -> str:
 
     if not isinstance(payload, dict):
         return "openai"
+
+    # zclaw currently uses Responses-shaped payloads only for Azure OpenAI.
+    if "input" in payload or "instructions" in payload or "max_output_tokens" in payload:
+        return "azure-openai"
 
     tools = payload.get("tools")
     if isinstance(tools, list) and tools:
@@ -138,6 +176,8 @@ def resolve_provider(provider: str, request_json: str) -> str:
 def call_provider(provider: str, request_json: str, timeout_s: int) -> str:
     if provider == "openai":
         return call_openai(request_json, timeout_s)
+    if provider == "azure-openai":
+        return call_azure_openai(request_json, timeout_s)
     return call_anthropic(request_json, timeout_s)
 
 
@@ -289,7 +329,9 @@ class QemuLiveBridge:
                     prefix_buf.clear()
                     mode = "suppress_resp"
                     continue
-                if REQ_PREFIX_B.startswith(candidate) or RESP_PREFIX_B.startswith(candidate):
+                if REQ_PREFIX_B.startswith(candidate) or RESP_PREFIX_B.startswith(
+                    candidate
+                ):
                     continue
 
                 os.write(sys.stdout.fileno(), candidate)
@@ -311,12 +353,14 @@ class QemuLiveBridge:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="QEMU live LLM bridge for zclaw emulator")
+    parser = argparse.ArgumentParser(
+        description="QEMU live LLM bridge for zclaw emulator"
+    )
     parser.add_argument(
         "--provider",
-        choices=("auto", "anthropic", "openai"),
+        choices=("auto", "anthropic", "openai", "azure-openai"),
         default="auto",
-        help="Host API provider: auto-detect from request format (default), anthropic, or openai",
+        help="Host API provider: auto-detect from request format (default), anthropic, openai, or azure-openai",
     )
     parser.add_argument(
         "--api-timeout",
@@ -359,9 +403,13 @@ def main() -> int:
         provider_note = "auto-detect (anthropic/openai)"
     else:
         provider_note = args.provider
-    write_host_line(sys.stdout, f"[qemu-live-llm] Bridge active (provider: {provider_note}).")
+    write_host_line(
+        sys.stdout, f"[qemu-live-llm] Bridge active (provider: {provider_note})."
+    )
     write_host_line(sys.stdout, "[qemu-live-llm] Press Ctrl+A then X to exit QEMU.")
-    bridge = QemuLiveBridge(args.qemu_cmd, args.provider, args.api_timeout, args.bridge_logs)
+    bridge = QemuLiveBridge(
+        args.qemu_cmd, args.provider, args.api_timeout, args.bridge_logs
+    )
     with RawStdin():
         return bridge.run()
 

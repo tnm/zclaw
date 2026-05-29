@@ -10,11 +10,12 @@ PROVIDER="${1:-all}"
 MESSAGE="${2:-Create a tool to blink GPIO 2 twice and report what you did.}"
 
 usage() {
-    echo "Usage: $0 [anthropic|openai|openrouter|all] [message]"
+    echo "Usage: $0 [anthropic|openai|azure-openai|openrouter|all] [message]"
     echo ""
     echo "Env keys:"
     echo "  ANTHROPIC_API_KEY"
     echo "  OPENAI_API_KEY"
+    echo "  AZURE_OPENAI_API_KEY (+ AZURE_OPENAI_API_URL)"
     echo "  OPENROUTER_API_KEY"
     echo ""
     echo "Examples:"
@@ -32,6 +33,11 @@ run_provider() {
         return 0
     fi
 
+    if [ "$name" = "azure_openai" ] && [ -z "${AZURE_OPENAI_API_URL:-}" ]; then
+        echo "Skipping azure-openai (AZURE_OPENAI_API_URL not set)"
+        return 0
+    fi
+
     echo "Running $name API test..."
     python3 "$script_path" --quiet "$MESSAGE"
 }
@@ -43,12 +49,16 @@ case "$PROVIDER" in
     openai)
         run_provider "openai" "OPENAI_API_KEY"
         ;;
+    azure-openai)
+        run_provider "azure_openai" "AZURE_OPENAI_API_KEY"
+        ;;
     openrouter)
         run_provider "openrouter" "OPENROUTER_API_KEY"
         ;;
     all)
         run_provider "anthropic" "ANTHROPIC_API_KEY"
         run_provider "openai" "OPENAI_API_KEY"
+        run_provider "azure_openai" "AZURE_OPENAI_API_KEY"
         run_provider "openrouter" "OPENROUTER_API_KEY"
         ;;
     -h|--help)

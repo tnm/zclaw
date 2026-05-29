@@ -31,7 +31,10 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "pin": {"type": "integer", "description": "GPIO pin allowed by GPIO Tool Safety policy"},
+                "pin": {
+                    "type": "integer",
+                    "description": "GPIO pin allowed by GPIO Tool Safety policy",
+                },
                 "state": {"type": "integer", "description": "0=LOW, 1=HIGH"},
             },
             "required": ["pin", "state"],
@@ -43,7 +46,10 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "pin": {"type": "integer", "description": "GPIO pin allowed by GPIO Tool Safety policy"},
+                "pin": {
+                    "type": "integer",
+                    "description": "GPIO pin allowed by GPIO Tool Safety policy",
+                },
             },
             "required": ["pin"],
         },
@@ -54,7 +60,10 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "milliseconds": {"type": "integer", "description": "Time to wait in ms (max 60000)"},
+                "milliseconds": {
+                    "type": "integer",
+                    "description": "Time to wait in ms (max 60000)",
+                },
             },
             "required": ["milliseconds"],
         },
@@ -65,9 +74,18 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
-                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
-                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+                "sda_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)",
+                },
+                "scl_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)",
+                },
+                "frequency_hz": {
+                    "type": "integer",
+                    "description": "I2C bus speed in Hz (optional, default 100000)",
+                },
             },
             "required": ["sda_pin", "scl_pin"],
         },
@@ -78,11 +96,26 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
-                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
-                "address": {"type": "integer", "description": "7-bit I2C device address"},
-                "data_hex": {"type": "string", "description": "Space-separated hex bytes to write"},
-                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+                "sda_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)",
+                },
+                "scl_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)",
+                },
+                "address": {
+                    "type": "integer",
+                    "description": "7-bit I2C device address",
+                },
+                "data_hex": {
+                    "type": "string",
+                    "description": "Space-separated hex bytes to write",
+                },
+                "frequency_hz": {
+                    "type": "integer",
+                    "description": "I2C bus speed in Hz (optional, default 100000)",
+                },
             },
             "required": ["sda_pin", "scl_pin", "address", "data_hex"],
         },
@@ -93,11 +126,26 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
-                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
-                "address": {"type": "integer", "description": "7-bit I2C device address"},
-                "read_length": {"type": "integer", "description": "Number of bytes to read"},
-                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+                "sda_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)",
+                },
+                "scl_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)",
+                },
+                "address": {
+                    "type": "integer",
+                    "description": "7-bit I2C device address",
+                },
+                "read_length": {
+                    "type": "integer",
+                    "description": "Number of bytes to read",
+                },
+                "frequency_hz": {
+                    "type": "integer",
+                    "description": "I2C bus speed in Hz (optional, default 100000)",
+                },
             },
             "required": ["sda_pin", "scl_pin", "address", "read_length"],
         },
@@ -108,12 +156,30 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "sda_pin": {"type": "integer", "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)"},
-                "scl_pin": {"type": "integer", "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)"},
-                "address": {"type": "integer", "description": "7-bit I2C device address"},
-                "write_hex": {"type": "string", "description": "Space-separated hex bytes to write first"},
-                "read_length": {"type": "integer", "description": "Number of bytes to read after the write"},
-                "frequency_hz": {"type": "integer", "description": "I2C bus speed in Hz (optional, default 100000)"},
+                "sda_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SDA (subject to GPIO Tool Safety policy)",
+                },
+                "scl_pin": {
+                    "type": "integer",
+                    "description": "GPIO pin for SCL (subject to GPIO Tool Safety policy)",
+                },
+                "address": {
+                    "type": "integer",
+                    "description": "7-bit I2C device address",
+                },
+                "write_hex": {
+                    "type": "string",
+                    "description": "Space-separated hex bytes to write first",
+                },
+                "read_length": {
+                    "type": "integer",
+                    "description": "Number of bytes to read after the write",
+                },
+                "frequency_hz": {
+                    "type": "integer",
+                    "description": "I2C bus speed in Hz (optional, default 100000)",
+                },
             },
             "required": ["sda_pin", "scl_pin", "address", "write_hex", "read_length"],
         },
@@ -124,8 +190,15 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "pin": {"type": "integer", "description": "GPIO pin connected to the DHT data line"},
-                "model": {"type": "string", "enum": ["dht11", "dht22"], "description": "DHT sensor model"},
+                "pin": {
+                    "type": "integer",
+                    "description": "GPIO pin connected to the DHT data line",
+                },
+                "model": {
+                    "type": "string",
+                    "enum": ["dht11", "dht22"],
+                    "description": "DHT sensor model",
+                },
                 "retries": {"type": "integer", "description": "Optional retry count"},
             },
             "required": ["pin", "model"],
@@ -177,11 +250,20 @@ TOOLS = [
             "type": "object",
             "properties": {
                 "type": {"type": "string", "enum": ["periodic", "daily", "once"]},
-                "interval_minutes": {"type": "integer", "description": "For periodic: minutes between runs"},
-                "delay_minutes": {"type": "integer", "description": "For once: minutes from now before one-time run"},
+                "interval_minutes": {
+                    "type": "integer",
+                    "description": "For periodic: minutes between runs",
+                },
+                "delay_minutes": {
+                    "type": "integer",
+                    "description": "For once: minutes from now before one-time run",
+                },
                 "hour": {"type": "integer", "description": "For daily: hour 0-23"},
                 "minute": {"type": "integer", "description": "For daily: minute 0-59"},
-                "action": {"type": "string", "description": "What to do when triggered"},
+                "action": {
+                    "type": "string",
+                    "description": "What to do when triggered",
+                },
             },
             "required": ["type", "action"],
         },
@@ -241,9 +323,18 @@ TOOLS = [
         "input_schema": {
             "type": "object",
             "properties": {
-                "name": {"type": "string", "description": "Tool name (alphanumeric, no spaces)"},
-                "description": {"type": "string", "description": "Short description for tool list"},
-                "action": {"type": "string", "description": "What to do when tool is called"},
+                "name": {
+                    "type": "string",
+                    "description": "Tool name (alphanumeric, no spaces)",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Short description for tool list",
+                },
+                "action": {
+                    "type": "string",
+                    "description": "What to do when tool is called",
+                },
             },
             "required": ["name", "description", "action"],
         },
@@ -268,26 +359,44 @@ TOOLS = [
 
 # Simulated tool results
 MOCK_RESULTS = {
-    "gpio_write": lambda inp: f"Pin {inp.get('pin')} -> {'HIGH' if inp.get('state') else 'LOW'}",
+    "gpio_write": lambda inp: (
+        f"Pin {inp.get('pin')} -> {'HIGH' if inp.get('state') else 'LOW'}"
+    ),
     "gpio_read": lambda inp: f"Pin {inp.get('pin')} = HIGH",
     "delay": lambda inp: f"Waited {inp.get('milliseconds')} ms",
-    "i2c_scan": lambda inp: f"No I2C devices found on SDA={inp.get('sda_pin')} SCL={inp.get('scl_pin')} @ {inp.get('frequency_hz', 100000)} Hz",
+    "i2c_scan": lambda inp: (
+        f"No I2C devices found on SDA={inp.get('sda_pin')} SCL={inp.get('scl_pin')} @ {inp.get('frequency_hz', 100000)} Hz"
+    ),
     "i2c_write": lambda inp: f"Wrote bytes to I2C address {inp.get('address')}",
-    "i2c_read": lambda inp: f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')}: 0x00",
-    "i2c_write_read": lambda inp: f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')} after writing bytes: 0x00",
-    "dht_read": lambda inp: f"{inp.get('model', 'dht11').upper()} on GPIO {inp.get('pin')}: humidity=55.0%, temperature=24.0 C",
+    "i2c_read": lambda inp: (
+        f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')}: 0x00"
+    ),
+    "i2c_write_read": lambda inp: (
+        f"Read {inp.get('read_length')} byte(s) from I2C address {inp.get('address')} after writing bytes: 0x00"
+    ),
+    "dht_read": lambda inp: (
+        f"{inp.get('model', 'dht11').upper()} on GPIO {inp.get('pin')}: humidity=55.0%, temperature=24.0 C"
+    ),
     "memory_set": lambda inp: f"Saved: {inp.get('key')} = {inp.get('value')}",
     "memory_get": lambda inp: f"{inp.get('key')} = example_value",
     "memory_list": lambda inp: "Stored keys: user_name, last_water",
     "memory_delete": lambda inp: f"Deleted: {inp.get('key')}",
-    "cron_set": lambda inp: f"Created schedule #1: {inp.get('type')} -> {inp.get('action')}",
+    "cron_set": lambda inp: (
+        f"Created schedule #1: {inp.get('type')} -> {inp.get('action')}"
+    ),
     "cron_list": lambda inp: "No scheduled tasks",
     "cron_delete": lambda inp: f"Deleted schedule #{inp.get('id')}",
     "get_time": lambda inp: "2026-02-21 14:30:00 UTC",
     "get_version": lambda inp: "zclaw v2.0.4",
-    "get_health": lambda inp: "Health: OK | Heap: 180000 free | Requests: 5/hr, 20/day | Time: synced",
-    "get_diagnostics": lambda inp: "Diagnostics: uptime=2h 14m | heap=180000/120000/90000 | req=5/hr,20/day",
-    "create_tool": lambda inp: f"Created tool '{inp.get('name')}': {inp.get('description')}",
+    "get_health": lambda inp: (
+        "Health: OK | Heap: 180000 free | Requests: 5/hr, 20/day | Time: synced"
+    ),
+    "get_diagnostics": lambda inp: (
+        "Diagnostics: uptime=2h 14m | heap=180000/120000/90000 | req=5/hr,20/day"
+    ),
+    "create_tool": lambda inp: (
+        f"Created tool '{inp.get('name')}': {inp.get('description')}"
+    ),
     "list_user_tools": lambda inp: "No user tools defined",
     "delete_user_tool": lambda inp: f"Deleted tool '{inp.get('name')}'",
 }
@@ -296,7 +405,7 @@ MOCK_RESULTS = {
 @dataclass(frozen=True)
 class ProviderConfig:
     name: str
-    api_url: str
+    api_url: str | None
     default_model: str
     model_env: str
     api_key_env: str
@@ -320,6 +429,14 @@ PROVIDERS = {
         api_key_env="OPENAI_API_KEY",
         wire_format="openai",
     ),
+    "azure-openai": ProviderConfig(
+        name="azure-openai",
+        api_url=None,
+        default_model="gpt-5.4",
+        model_env="AZURE_OPENAI_MODEL",
+        api_key_env="AZURE_OPENAI_API_KEY",
+        wire_format="responses",
+    ),
     "openrouter": ProviderConfig(
         name="openrouter",
         api_url="https://openrouter.ai/api/v1/chat/completions",
@@ -331,7 +448,9 @@ PROVIDERS = {
 }
 
 
-def _tool_defs_for_provider(provider: ProviderConfig, user_tools: list[dict[str, str]]) -> list[dict[str, Any]]:
+def _tool_defs_for_provider(
+    provider: ProviderConfig, user_tools: list[dict[str, str]]
+) -> list[dict[str, Any]]:
     base = copy.deepcopy(TOOLS)
     for ut in user_tools:
         base.append(
@@ -344,6 +463,17 @@ def _tool_defs_for_provider(provider: ProviderConfig, user_tools: list[dict[str,
 
     if provider.wire_format == "anthropic":
         return base
+
+    if provider.wire_format == "responses":
+        return [
+            {
+                "type": "function",
+                "name": tool["name"],
+                "description": tool["description"],
+                "parameters": tool["input_schema"],
+            }
+            for tool in base
+        ]
 
     return [
         {
@@ -360,7 +490,8 @@ def _tool_defs_for_provider(provider: ProviderConfig, user_tools: list[dict[str,
 
 def _openai_like_max_tokens_field(model: str) -> tuple[str, int]:
     # Mirror firmware behavior: GPT-5 chat-completions expects max_completion_tokens.
-    if model.lower().startswith("gpt-5"):
+    model_name = model.lower().rsplit("/", 1)[-1]
+    if model_name.startswith("gpt-5"):
         return ("max_completion_tokens", 1024)
     return ("max_tokens", 1024)
 
@@ -375,6 +506,14 @@ def call_api(
     """Make API request to provider."""
     if httpx is None:
         raise RuntimeError("httpx is required for live API tests (pip install httpx)")
+
+    api_url = provider.api_url
+    if provider.name == "azure-openai":
+        api_url = os.environ.get("AZURE_OPENAI_API_URL", "")
+        if not api_url:
+            raise RuntimeError(
+                "AZURE_OPENAI_API_URL is required for Azure OpenAI API tests"
+            )
 
     tools = _tool_defs_for_provider(provider, user_tools)
 
@@ -391,13 +530,13 @@ def call_api(
             "tools": tools,
             "messages": messages,
         }
-    else:
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "content-type": "application/json",
-        }
+    elif provider.wire_format == "openai":
+        headers = {"content-type": "application/json"}
+        headers["Authorization"] = f"Bearer {api_key}"
         if provider.name == "openrouter":
-            headers["HTTP-Referer"] = os.environ.get("OPENROUTER_HTTP_REFERER", "https://github.com/tnm/zclaw")
+            headers["HTTP-Referer"] = os.environ.get(
+                "OPENROUTER_HTTP_REFERER", "https://github.com/tnm/zclaw"
+            )
             headers["X-Title"] = os.environ.get("OPENROUTER_X_TITLE", "zclaw api tests")
 
         token_field, token_value = _openai_like_max_tokens_field(model)
@@ -414,13 +553,61 @@ def call_api(
             "messages": messages,
             "tools": tools,
         }
+    else:
+        headers = {
+            "content-type": "application/json",
+            "api-key": api_key,
+        }
+        input_items: list[dict[str, Any]] = []
+        instructions = SYSTEM_PROMPT
 
-    response = httpx.post(provider.api_url, headers=headers, json=payload, timeout=30)
+        for msg in messages:
+            if msg.get("role") == "system" and msg.get("type") is None:
+                instructions = str(msg.get("content", SYSTEM_PROMPT))
+                continue
+            if msg.get("type") is not None:
+                input_items.append(msg)
+            else:
+                input_items.append(
+                    {
+                        "type": "message",
+                        "role": msg.get("role", "user"),
+                        "content": [
+                            {
+                                "type": (
+                                    "output_text"
+                                    if msg.get("role") == "assistant"
+                                    else "input_text"
+                                ),
+                                "text": str(msg.get("content", "")),
+                            }
+                        ],
+                    }
+                )
+
+        payload = {
+            "model": model,
+            "instructions": instructions,
+            "max_output_tokens": 1024,
+            "parallel_tool_calls": False,
+            "reasoning": {"effort": "low"},
+            "input": input_items,
+            "tools": tools,
+        }
+
+    if not api_url:
+        raise RuntimeError(
+            f"Provider '{provider.name}' does not have an API URL configured"
+        )
+
+    response = httpx.post(api_url, headers=headers, json=payload, timeout=30)
     response.raise_for_status()
     return response.json()
 
 
-def execute_tool(name: str, input_data: dict[str, Any], user_tools: list[dict[str, str]]) -> str:
+def execute_tool(
+    name: str, input_data: dict[str, Any], user_tools: list[dict[str, str]]
+) -> str:
     """Simulate tool execution."""
     for ut in user_tools:
         if ut["name"] == name:
@@ -431,7 +618,9 @@ def execute_tool(name: str, input_data: dict[str, Any], user_tools: list[dict[st
     return f"Unknown tool: {name}"
 
 
-def handle_create_tool(input_data: dict[str, Any], user_tools: list[dict[str, str]]) -> str:
+def handle_create_tool(
+    input_data: dict[str, Any], user_tools: list[dict[str, str]]
+) -> str:
     """Track user-created tools in-memory for the current session."""
     user_tools.append(
         {
@@ -443,7 +632,9 @@ def handle_create_tool(input_data: dict[str, Any], user_tools: list[dict[str, st
     return str(MOCK_RESULTS["create_tool"](input_data))
 
 
-def _extract_anthropic_round(response: dict[str, Any]) -> tuple[str, list[dict[str, Any]], bool]:
+def _extract_anthropic_round(
+    response: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], bool]:
     stop_reason = response.get("stop_reason")
     content = response.get("content", [])
     text_response = ""
@@ -479,7 +670,9 @@ def _parse_tool_args(arguments_raw: Any) -> dict[str, Any]:
     return {}
 
 
-def _extract_openai_round(response: dict[str, Any]) -> tuple[str, list[dict[str, Any]], bool, dict[str, Any]]:
+def _extract_openai_round(
+    response: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], bool, dict[str, Any]]:
     choices = response.get("choices", [])
     if not choices:
         return "", [], True, {"role": "assistant", "content": ""}
@@ -503,12 +696,48 @@ def _extract_openai_round(response: dict[str, Any]) -> tuple[str, list[dict[str,
             }
         )
 
-    assistant_msg: dict[str, Any] = {"role": "assistant", "content": message.get("content")}
+    assistant_msg: dict[str, Any] = {
+        "role": "assistant",
+        "content": message.get("content"),
+    }
     if raw_tool_calls:
         assistant_msg["tool_calls"] = raw_tool_calls
 
     done = not tool_uses
     return text_response, tool_uses, done, assistant_msg
+
+
+def _extract_responses_round(
+    response: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], bool, list[dict[str, Any]]]:
+    output = response.get("output", [])
+    text_response = str(response.get("output_text") or "")
+    tool_uses: list[dict[str, Any]] = []
+    assistant_items: list[dict[str, Any]] = []
+
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+
+        assistant_items.append(item)
+        item_type = item.get("type")
+        if item_type == "message":
+            if not text_response:
+                for content in item.get("content", []):
+                    if content.get("type") == "output_text":
+                        text_response = str(content.get("text", ""))
+                        break
+        elif item_type == "function_call":
+            tool_uses.append(
+                {
+                    "id": str(item.get("call_id", "")),
+                    "name": str(item.get("name", "")),
+                    "input": _parse_tool_args(item.get("arguments", "{}")),
+                }
+            )
+
+    done = not tool_uses
+    return text_response, tool_uses, done, assistant_items
 
 
 def run_conversation(
@@ -523,7 +752,7 @@ def run_conversation(
     messages: list[dict[str, Any]] = [{"role": "user", "content": user_message}]
 
     if verbose:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"PROVIDER: {provider.name}")
         print(f"MODEL: {model}")
         print(f"USER: {user_message}")
@@ -532,14 +761,30 @@ def run_conversation(
     max_rounds = 5
     for round_num in range(max_rounds):
         response = call_api(provider, messages, api_key, model, user_tools)
+        assistant_items: list[dict[str, Any]] = []
 
         if provider.wire_format == "anthropic":
             text_response, tool_uses, done = _extract_anthropic_round(response)
-            assistant_msg = {"role": "assistant", "content": response.get("content", [])}
+            assistant_msg = {
+                "role": "assistant",
+                "content": response.get("content", []),
+            }
             stop_reason = response.get("stop_reason")
-        else:
-            text_response, tool_uses, done, assistant_msg = _extract_openai_round(response)
+        elif provider.wire_format == "openai":
+            text_response, tool_uses, done, assistant_msg = _extract_openai_round(
+                response
+            )
             stop_reason = response.get("choices", [{}])[0].get("finish_reason")
+        else:
+            text_response, tool_uses, done, assistant_items = _extract_responses_round(
+                response
+            )
+            assistant_msg = {
+                "type": "message",
+                "role": "assistant",
+                "content": text_response,
+            }
+            stop_reason = response.get("status")
 
         if verbose:
             print(f"\n--- Round {round_num + 1} (stop_reason: {stop_reason}) ---")
@@ -548,14 +793,13 @@ def run_conversation(
 
         if done:
             if verbose:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print(f"FINAL: {text_response}")
                 print("=" * 60)
             return text_response
 
-        messages.append(assistant_msg)
-
         if provider.wire_format == "anthropic":
+            messages.append(assistant_msg)
             tool_results = []
             for tool_use in tool_uses:
                 tool_name = tool_use["name"]
@@ -573,9 +817,12 @@ def run_conversation(
                 if verbose:
                     print(f"TOOL RESULT: {result}")
 
-                tool_results.append({"type": "tool_result", "tool_use_id": tool_id, "content": result})
+                tool_results.append(
+                    {"type": "tool_result", "tool_use_id": tool_id, "content": result}
+                )
             messages.append({"role": "user", "content": tool_results})
-        else:
+        elif provider.wire_format == "openai":
+            messages.append(assistant_msg)
             for tool_use in tool_uses:
                 tool_name = tool_use["name"]
                 tool_id = tool_use["id"]
@@ -592,7 +839,34 @@ def run_conversation(
                 if verbose:
                     print(f"TOOL RESULT: {result}")
 
-                messages.append({"role": "tool", "tool_call_id": tool_id, "content": result})
+                messages.append(
+                    {"role": "tool", "tool_call_id": tool_id, "content": result}
+                )
+        else:
+            messages.extend(assistant_items)
+            for tool_use in tool_uses:
+                tool_name = tool_use["name"]
+                tool_id = tool_use["id"]
+                tool_input = tool_use["input"]
+
+                if verbose:
+                    print(f"TOOL CALL: {tool_name}({json.dumps(tool_input)})")
+
+                if tool_name == "create_tool":
+                    result = handle_create_tool(tool_input, user_tools)
+                else:
+                    result = execute_tool(tool_name, tool_input, user_tools)
+
+                if verbose:
+                    print(f"TOOL RESULT: {result}")
+
+                messages.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": tool_id,
+                        "output": result,
+                    }
+                )
 
     return "(Max rounds reached)"
 

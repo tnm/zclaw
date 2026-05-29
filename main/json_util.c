@@ -14,14 +14,100 @@ static const char *TAG = "json";
 // Keep parsed response tree alive for tool_input access
 static cJSON *s_parsed_response = NULL;
 
+static bool model_uses_max_completion_tokens(const char *model)
+{
+    const char *name = model;
+    const char *slash = NULL;
+
+    if (!name || name[0] == '\0') {
+        return false;
+    }
+
+    slash = strrchr(name, '/');
+    if (slash && slash[1] != '\0') {
+        name = slash + 1;
+    }
+
+    return strncmp(name, "gpt-5", 5) == 0;
+}
+
 static bool add_token_limit_field(cJSON *root)
 {
     const char *field = "max_tokens";
-    if (llm_get_backend() == LLM_BACKEND_OPENAI) {
+    if (llm_is_openai_format() && model_uses_max_completion_tokens(llm_get_model())) {
         // GPT-5 chat-completions models reject max_tokens and require max_completion_tokens.
         field = "max_completion_tokens";
     }
     return cJSON_AddNumberToObject(root, field, LLM_MAX_TOKENS) != NULL;
+}
+
+static cJSON *create_text_content_item(const char *type, const char *text)
+{
+    cJSON *item = cJSON_CreateObject();
+    if (!item ||
+        !cJSON_AddStringToObject(item, "type", type) ||
+        !cJSON_AddStringToObject(item, "text", text)) {
+        cJSON_Delete(item);
+        return NULL;
+    }
+    return item;
+}
+
+static cJSON *create_responses_message_item(const char *role, const char *text)
+{
+    cJSON *item = cJSON_CreateObject();
+    cJSON *content = NULL;
+    cJSON *text_item = NULL;
+    const char *content_type = strcmp(role, "assistant") == 0 ? "output_text" : "input_text";
+
+    if (!item ||
+        !cJSON_AddStringToObject(item, "type", "message") ||
+        !cJSON_AddStringToObject(item, "role", role)) {
+        cJSON_Delete(item);
+        return NULL;
+    }
+
+    content = cJSON_AddArrayToObject(item, "content");
+    text_item = create_text_content_item(content_type, text);
+    if (!content || !text_item) {
+        cJSON_Delete(text_item);
+        cJSON_Delete(item);
+        return NULL;
+    }
+
+    cJSON_AddItemToArray(content, text_item);
+    return item;
+}
+
+static cJSON *create_responses_function_call_item(const conversation_msg_t *msg)
+{
+    cJSON *item = cJSON_CreateObject();
+
+    if (!item ||
+        !cJSON_AddStringToObject(item, "type", "function_call") ||
+        !cJSON_AddStringToObject(item, "call_id", msg->tool_id) ||
+        !cJSON_AddStringToObject(item, "name", msg->tool_name) ||
+        !cJSON_AddStringToObject(item, "arguments", msg->content)) {
+        cJSON_Delete(item);
+        return NULL;
+    }
+
+    return item;
+}
+
+static cJSON *create_responses_function_call_output_item(const conversation_msg_t *msg)
+{
+    cJSON *item = cJSON_CreateObject();
+
+    if (!item ||
+        !cJSON_AddStringToObject(item, "type", "function_call_output") ||
+        !cJSON_AddStringToObject(item, "call_id", msg->tool_id) ||
+        !cJSON_AddStringToObject(item, "output", msg->content)) {
+        cJSON_Delete(item);
+        return NULL;
+    }
+
+    return item;
 }
 
 static bool history_has_prior_tool_use(
@@ -35,6 +121,22 @@ static bool history_has_prior_tool_use(
     for (int i = 0; i < index; i++) {
         if (history[i].is_tool_use && strcmp(history[i].tool_id, tool_id) == 0) {
             return true;
+        }
+        if (history[i].is_response_item) {
+            cJSON *item = cJSON_Parse(history[i].content);
+            if (!item) {
+                continue;
+            }
+            cJSON *type = cJSON_GetObjectItem(item, "type");
+            cJSON *call_id = cJSON_GetObjectItem(item, "call_id");
+            bool is_match = type && cJSON_IsString(type) &&
+                            call_id && cJSON_IsString(call_id) &&
+                            strcmp(type->valuestring, "function_call") == 0 &&
+                            strcmp(call_id->valuestring, tool_id) == 0;
+            cJSON_Delete(item);
+            if (is_match) {
+                return true;
+            }
         }
     }
     return false;
@@ -506,6 +608,209 @@ static bool parse_openai_response(
     return true;
 }
 
+static char *build_responses_api_request(
+    const char *system_prompt,
+    const conversation_msg_t *history,
+    int history_len,
+    const char *user_message,
+    const tool_def_t *tools,
+    int tool_count,
+    const char *previous_response_id)
+{
+    cJSON *root = cJSON_CreateObject();
+    cJSON *input = NULL;
+    if (!root) {
+        return NULL;
+    }
+
+    if (!cJSON_AddStringToObject(root, "model", llm_get_model()) ||
+        !cJSON_AddStringToObject(root, "instructions", system_prompt) ||
+        !cJSON_AddBoolToObject(root, "parallel_tool_calls", false) ||
+        !cJSON_AddNumberToObject(root, "max_output_tokens", LLM_MAX_TOKENS)) {
+        goto fail;
+    }
+
+    if (previous_response_id && previous_response_id[0] != '\0' &&
+        !cJSON_AddStringToObject(root, "previous_response_id", previous_response_id)) {
+        goto fail;
+    }
+
+    cJSON *reasoning = cJSON_AddObjectToObject(root, "reasoning");
+    if (!reasoning || !cJSON_AddStringToObject(reasoning, "effort", "low")) {
+        goto fail;
+    }
+
+    input = cJSON_AddArrayToObject(root, "input");
+    if (!input) {
+        goto fail;
+    }
+
+    for (int i = 0; i < history_len; i++) {
+        cJSON *item = NULL;
+        if (history[i].is_response_item) {
+            item = cJSON_Parse(history[i].content);
+        } else if (history[i].is_tool_use) {
+            item = create_responses_function_call_item(&history[i]);
+        } else if (history[i].is_tool_result) {
+            if ((!previous_response_id || previous_response_id[0] == '\0') &&
+                !history_has_prior_tool_use(history, i, history[i].tool_id)) {
+                ESP_LOGW(TAG, "Skipping orphan tool_result in history[%d] (id=%s)",
+                         i, history[i].tool_id);
+                continue;
+            }
+            item = create_responses_function_call_output_item(&history[i]);
+        } else {
+            item = create_responses_message_item(history[i].role, history[i].content);
+        }
+
+        if (!item) {
+            goto fail;
+        }
+        cJSON_AddItemToArray(input, item);
+    }
+
+    if (user_message && user_message[0] != '\0') {
+        cJSON *user_item = create_responses_message_item("user", user_message);
+        if (!user_item) {
+            goto fail;
+        }
+        cJSON_AddItemToArray(input, user_item);
+    }
+
+    int user_tool_count = user_tools_count();
+    if (tool_count > 0 || user_tool_count > 0) {
+        cJSON *tools_arr = cJSON_AddArrayToObject(root, "tools");
+        if (!tools_arr) {
+            goto fail;
+        }
+
+        for (int i = 0; i < tool_count; i++) {
+            cJSON *tool = cJSON_CreateObject();
+            cJSON *params = cJSON_Parse(tools[i].input_schema_json);
+            if (!params) {
+                params = cJSON_CreateObject();
+            }
+
+            if (!tool || !params ||
+                !cJSON_AddStringToObject(tool, "type", "function") ||
+                !cJSON_AddStringToObject(tool, "name", tools[i].name) ||
+                !cJSON_AddStringToObject(tool, "description", tools[i].description)) {
+                cJSON_Delete(params);
+                cJSON_Delete(tool);
+                goto fail;
+            }
+
+            cJSON_AddItemToObject(tool, "parameters", params);
+            cJSON_AddItemToArray(tools_arr, tool);
+        }
+
+        user_tool_t user_tools_arr[MAX_DYNAMIC_TOOLS];
+        int loaded = user_tools_get_all(user_tools_arr, MAX_DYNAMIC_TOOLS);
+        for (int i = 0; i < loaded; i++) {
+            cJSON *tool = cJSON_CreateObject();
+            cJSON *params = cJSON_CreateObject();
+            cJSON *properties = cJSON_CreateObject();
+            if (!tool || !params || !properties ||
+                !cJSON_AddStringToObject(tool, "type", "function") ||
+                !cJSON_AddStringToObject(tool, "name", user_tools_arr[i].name) ||
+                !cJSON_AddStringToObject(tool, "description", user_tools_arr[i].description) ||
+                !cJSON_AddStringToObject(params, "type", "object")) {
+                cJSON_Delete(properties);
+                cJSON_Delete(params);
+                cJSON_Delete(tool);
+                goto fail;
+            }
+
+            cJSON_AddItemToObject(params, "properties", properties);
+            cJSON_AddItemToObject(tool, "parameters", params);
+            cJSON_AddItemToArray(tools_arr, tool);
+        }
+    }
+
+    char *json_str = cJSON_PrintUnformatted(root);
+    if (!json_str) {
+        goto fail;
+    }
+
+    cJSON_Delete(root);
+    return json_str;
+
+fail:
+    cJSON_Delete(root);
+    return NULL;
+}
+
+static bool parse_responses_api_response(
+    cJSON *root,
+    char *text_out,
+    size_t text_out_len,
+    char *tool_name_out,
+    size_t tool_name_len,
+    char *tool_id_out,
+    size_t tool_id_len,
+    cJSON **tool_input_out)
+{
+    cJSON *output = cJSON_GetObjectItem(root, "output");
+    if (!output || !cJSON_IsArray(output) || cJSON_GetArraySize(output) == 0) {
+        ESP_LOGE(TAG, "No output array in responses API result");
+        return false;
+    }
+
+    cJSON *item = NULL;
+    cJSON_ArrayForEach(item, output) {
+        cJSON *type = cJSON_GetObjectItem(item, "type");
+        if (!type || !cJSON_IsString(type)) {
+            continue;
+        }
+
+        if (strcmp(type->valuestring, "message") == 0) {
+            cJSON *content = cJSON_GetObjectItem(item, "content");
+            if (!content || !cJSON_IsArray(content)) {
+                continue;
+            }
+
+            cJSON *content_item = NULL;
+            cJSON_ArrayForEach(content_item, content) {
+                cJSON *content_type = cJSON_GetObjectItem(content_item, "type");
+                cJSON *text = cJSON_GetObjectItem(content_item, "text");
+                if (content_type && cJSON_IsString(content_type) &&
+                    text && cJSON_IsString(text) &&
+                    strcmp(content_type->valuestring, "output_text") == 0) {
+                    strncpy(text_out, text->valuestring, text_out_len - 1);
+                    text_out[text_out_len - 1] = '\0';
+                    break;
+                }
+            }
+        } else if (strcmp(type->valuestring, "function_call") == 0) {
+            cJSON *call_id = cJSON_GetObjectItem(item, "call_id");
+            cJSON *name = cJSON_GetObjectItem(item, "name");
+            cJSON *args = cJSON_GetObjectItem(item, "arguments");
+
+            if (call_id && cJSON_IsString(call_id)) {
+                strncpy(tool_id_out, call_id->valuestring, tool_id_len - 1);
+                tool_id_out[tool_id_len - 1] = '\0';
+            }
+            if (name && cJSON_IsString(name)) {
+                strncpy(tool_name_out, name->valuestring, tool_name_len - 1);
+                tool_name_out[tool_name_len - 1] = '\0';
+            }
+            if (args && cJSON_IsString(args)) {
+                cJSON *parsed_args = cJSON_Parse(args->valuestring);
+                if (!parsed_args) {
+                    parsed_args = cJSON_CreateObject();
+                }
+                if (parsed_args) {
+                    cJSON_AddItemToObject(item, "_parsed_arguments", parsed_args);
+                    *tool_input_out = parsed_args;
+                }
+            }
+            return true;
+        }
+    }
+
+    return true;
+}
+
 // -----------------------------------------------------------------------------
 // Public API
 // -----------------------------------------------------------------------------
@@ -516,11 +821,16 @@ char *json_build_request(
     int history_len,
     const char *user_message,
     const tool_def_t *tools,
-    int tool_count)
+    int tool_count,
+    const char *previous_response_id)
 {
     char *json_str;
 
-    if (llm_is_openai_format()) {
+    if (llm_uses_responses_api()) {
+        json_str = build_responses_api_request(system_prompt, history, history_len,
+                                               user_message, tools, tool_count,
+                                               previous_response_id);
+    } else if (llm_is_openai_format()) {
         json_str = build_openai_request(system_prompt, history, history_len,
                                          user_message, tools, tool_count);
     } else {
@@ -561,7 +871,7 @@ bool json_parse_response(
 
     // Check for error (both APIs use similar format)
     cJSON *error = cJSON_GetObjectItem(s_parsed_response, "error");
-    if (error) {
+    if (error && !cJSON_IsNull(error)) {
         cJSON *msg = cJSON_GetObjectItem(error, "message");
         if (msg && cJSON_IsString(msg)) {
             snprintf(text_out, text_out_len, "API Error: %s", msg->valuestring);
@@ -572,10 +882,14 @@ bool json_parse_response(
     }
 
     // Parse based on format
-    if (llm_is_openai_format()) {
+    if (llm_uses_responses_api()) {
+        return parse_responses_api_response(s_parsed_response, text_out, text_out_len,
+                                            tool_name_out, tool_name_len,
+                                            tool_id_out, tool_id_len, tool_input_out);
+    } else if (llm_is_openai_format()) {
         return parse_openai_response(s_parsed_response, text_out, text_out_len,
-                                      tool_name_out, tool_name_len,
-                                      tool_id_out, tool_id_len, tool_input_out);
+                                       tool_name_out, tool_name_len,
+                                       tool_id_out, tool_id_len, tool_input_out);
     } else {
         return parse_anthropic_response(s_parsed_response, text_out, text_out_len,
                                          tool_name_out, tool_name_len,
@@ -589,4 +903,9 @@ void json_free_parsed_response(void)
         cJSON_Delete(s_parsed_response);
         s_parsed_response = NULL;
     }
+}
+
+const cJSON *json_get_parsed_response(void)
+{
+    return s_parsed_response;
 }

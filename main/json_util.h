@@ -14,6 +14,7 @@ typedef struct {
     char content[MAX_MESSAGE_LEN];  // The text or tool result
     bool is_tool_use;               // True if this is a tool_use response
     bool is_tool_result;            // True if this is a tool_result
+    bool is_response_item;          // True if content is a raw Responses API item JSON blob
     char tool_id[64];               // Tool use ID (for tool_use/tool_result)
     char tool_name[32];             // Tool name (for tool_use)
 } conversation_msg_t;
@@ -26,7 +27,8 @@ char *json_build_request(
     int history_len,
     const char *user_message,
     const struct tool_def *tools,
-    int tool_count
+    int tool_count,
+    const char *previous_response_id
 );
 
 // Parse the API response, extracting:
@@ -46,5 +48,8 @@ bool json_parse_response(
 
 // Free the parsed response (call after done with tool_input)
 void json_free_parsed_response(void);
+
+// Borrow the currently parsed response root. Do not free or retain it.
+const cJSON *json_get_parsed_response(void);
 
 #endif // JSON_UTIL_H

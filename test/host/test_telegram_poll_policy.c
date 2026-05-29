@@ -18,6 +18,7 @@ TEST(default_backends_keep_standard_timeout)
 {
     ASSERT(telegram_poll_timeout_for_backend(LLM_BACKEND_ANTHROPIC) == TELEGRAM_POLL_TIMEOUT);
     ASSERT(telegram_poll_timeout_for_backend(LLM_BACKEND_OPENAI) == TELEGRAM_POLL_TIMEOUT);
+    ASSERT(telegram_poll_timeout_for_backend(LLM_BACKEND_AZURE_OPENAI) == TELEGRAM_POLL_TIMEOUT);
     return 0;
 }
 
@@ -39,6 +40,8 @@ TEST(classic_esp32_shortens_standard_backends)
     ASSERT(telegram_poll_timeout_for_backend_test(LLM_BACKEND_ANTHROPIC, true) ==
            TELEGRAM_POLL_TIMEOUT_ESP32);
     ASSERT(telegram_poll_timeout_for_backend_test(LLM_BACKEND_OPENAI, true) ==
+           TELEGRAM_POLL_TIMEOUT_ESP32);
+    ASSERT(telegram_poll_timeout_for_backend_test(LLM_BACKEND_AZURE_OPENAI, true) ==
            TELEGRAM_POLL_TIMEOUT_ESP32);
     return 0;
 }
